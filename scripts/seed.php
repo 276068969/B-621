@@ -9,9 +9,10 @@ declare(strict_types=1);
 
 $config = require __DIR__ . '/../config/config.php';
 
-$maxAttempts = 30;
+$maxAttempts = 120;
 $attempt = 0;
 $pdo = null;
+$lastError = null;
 
 while ($attempt < $maxAttempts) {
     try {
@@ -30,12 +31,13 @@ while ($attempt < $maxAttempts) {
         );
         break;
     } catch (Throwable $e) {
-        usleep(300000);
+        $lastError = $e->getMessage();
+        usleep(500000);
     }
 }
 
 if (!$pdo instanceof PDO) {
-    fwrite(STDERR, "[seed] DB not ready\n");
+    fwrite(STDERR, sprintf("[seed] DB not ready after %d attempts: %s\n", $attempt, $lastError ?? 'unknown error'));
     exit(1);
 }
 
@@ -82,4 +84,3 @@ try {
     fwrite(STDERR, "[seed] failed\n");
     exit(1);
 }
-
