@@ -120,6 +120,8 @@ function render_header(array $config, array $options = []): void
             echo '你好，' . e($u['username']);
             echo '</a>';
             echo '<ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg animate-slide-up">';
+            echo '<li><a class="dropdown-item" href="/profile.php">我的主页</a></li>';
+            echo '<li><hr class="dropdown-divider"></li>';
             echo '<li><a class="dropdown-item" href="/logout.php">退出登录</a></li>';
             echo '</ul>';
             echo '</li>';
