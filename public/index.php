@@ -5,6 +5,7 @@ declare(strict_types=1);
  * 帖子列表页：
  * - 分页展示帖子
  * - 显示作者、时间、评论数
+ * - 快捷检索面板：标题关键词、作者名、评论热度、发布时间
  */
 
 require_once __DIR__ . '/../includes/bootstrap.php';
@@ -25,11 +26,83 @@ try {
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $pageSize = 10;
 
-$total = (int)$pdo->query('SELECT COUNT(*) FROM posts WHERE status = 1')->fetchColumn();
+$keyword = isset($_GET['keyword']) ? trim((string)$_GET['keyword']) : '';
+$author = isset($_GET['author']) ? trim((string)$_GET['author']) : '';
+$commentMin = isset($_GET['comment_min']) ? (int)$_GET['comment_min'] : 0;
+$commentMax = isset($_GET['comment_max']) ? (int)$_GET['comment_max'] : 0;
+$dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
+$dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
+$sort = isset($_GET['sort']) ? trim((string)$_GET['sort']) : 'time_desc';
+
+$hasFilter = $keyword !== '' || $author !== '' || $commentMin > 0 || $commentMax > 0 || $dateFrom !== '' || $dateTo !== '';
+
+$whereConditions = ['p.status = 1'];
+$params = [];
+
+if ($keyword !== '') {
+    $whereConditions[] = 'p.title LIKE :keyword';
+    $params[':keyword'] = '%' . $keyword . '%';
+}
+
+if ($author !== '') {
+    $whereConditions[] = 'u.username LIKE :author';
+    $params[':author'] = '%' . $author . '%';
+}
+
+if ($dateFrom !== '') {
+    $whereConditions[] = 'p.create_time >= :date_from';
+    $params[':date_from'] = $dateFrom . ' 00:00:00';
+}
+
+if ($dateTo !== '') {
+    $whereConditions[] = 'p.create_time <= :date_to';
+    $params[':date_to'] = $dateTo . ' 23:59:59';
+}
+
+$havingConditions = [];
+if ($commentMin > 0) {
+    $havingConditions[] = 'comment_count >= :comment_min';
+    $params[':comment_min'] = $commentMin;
+}
+if ($commentMax > 0) {
+    $havingConditions[] = 'comment_count <= :comment_max';
+    $params[':comment_max'] = $commentMax;
+}
+
+$whereSql = implode(' AND ', $whereConditions);
+$havingSql = $havingConditions ? ' HAVING ' . implode(' AND ', $havingConditions) : '';
+
+$orderSql = match($sort) {
+    'time_asc' => 'ORDER BY p.create_time ASC',
+    'comment_desc' => 'ORDER BY comment_count DESC',
+    'comment_asc' => 'ORDER BY comment_count ASC',
+    default => 'ORDER BY p.create_time DESC',
+};
+
+$totalSql = 'SELECT COUNT(*) FROM (
+    SELECT p.id
+    FROM posts p
+    JOIN users u ON u.id = p.user_id
+    LEFT JOIN (
+        SELECT post_id, COUNT(*) AS cnt
+        FROM comments
+        WHERE status = 1
+        GROUP BY post_id
+    ) c ON c.post_id = p.id
+    WHERE ' . $whereSql . '
+    GROUP BY p.id' . $havingSql . '
+) AS filtered';
+
+$totalStmt = $pdo->prepare($totalSql);
+foreach ($params as $key => $value) {
+    $totalStmt->bindValue($key, $value);
+}
+$totalStmt->execute();
+$total = (int)$totalStmt->fetchColumn();
+
 $pg = paginate($total, $page, $pageSize);
 
-$stmt = $pdo->prepare(
-    'SELECT p.id, p.title, p.content, p.create_time, u.username,
+$listSql = 'SELECT p.id, p.title, p.content, p.create_time, u.username,
             COALESCE(c.cnt, 0) AS comment_count
      FROM posts p
      JOIN users u ON u.id = p.user_id
@@ -39,34 +112,227 @@ $stmt = $pdo->prepare(
          WHERE status = 1
          GROUP BY post_id
      ) c ON c.post_id = p.id
-     WHERE p.status = 1
-     ORDER BY p.create_time DESC
-     LIMIT :limit OFFSET :offset'
-);
+     WHERE ' . $whereSql . '
+     GROUP BY p.id' . $havingSql . '
+     ' . $orderSql . '
+     LIMIT :limit OFFSET :offset';
+
+$stmt = $pdo->prepare($listSql);
+foreach ($params as $key => $value) {
+    $stmt->bindValue($key, $value);
+}
 $stmt->bindValue(':limit', $pg['pageSize'], PDO::PARAM_INT);
 $stmt->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
 $stmt->execute();
 $posts = $stmt->fetchAll();
 
+function build_query_string(array $overrides = []): string
+{
+    $params = $_GET;
+    if (isset($params['page'])) {
+        unset($params['page']);
+    }
+    foreach ($overrides as $key => $value) {
+        if ($value === '' || $value === null || $value === '0') {
+            unset($params[$key]);
+        } else {
+            $params[$key] = $value;
+        }
+    }
+    if (empty($params)) {
+        return '';
+    }
+    return '?' . http_build_query($params);
+}
+
 render_header($config, ['title' => '帖子列表 - Lite Forum', 'active' => 'home']);
 
-echo '<div class="d-flex align-items-center justify-content-between mb-3">';
+echo '<style>';
+echo '.filter-card{border:0;border-radius:.5rem;box-shadow:0 .125rem .25rem rgba(0,0,0,.075);background:#fff;}';
+echo '.filter-label{font-weight:500;color:#495057;font-size:.875rem;margin-bottom:.25rem;}';
+echo '.filter-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.35rem .65rem;font-size:.8rem;border-radius:.375rem;background:#eef2ff;color:#4338ca;}';
+echo '.filter-badge .remove-btn{cursor:pointer;opacity:.6;}';
+echo '.filter-badge .remove-btn:hover{opacity:1;}';
+echo '.filter-toggle-btn{display:none;}';
+echo '@media (max-width: 768px){';
+echo '  .filter-toggle-btn{display:inline-flex;align-items:center;gap:.35rem;}';
+echo '  .filter-panel{display:none;}';
+echo '  .filter-panel.show{display:block;}';
+echo '  .filter-row{flex-direction:column;gap:.75rem;}';
+echo '}';
+echo '</style>';
+
+echo '<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">';
 echo '<div>';
 echo '<h1 class="h4 mb-0">帖子</h1>';
-echo '<div class="text-muted small mt-1">共 ' . e((string)$total) . ' 篇</div>';
+echo '<div class="text-muted small mt-1">共 ' . e((string)$total) . ' 篇';
+if ($hasFilter) {
+    echo ' · 筛选中';
+}
 echo '</div>';
+echo '</div>';
+echo '<div class="d-flex gap-2">';
+echo '<button class="btn btn-outline-secondary filter-toggle-btn" type="button" data-bs-toggle="collapse" data-bs-target="#filterPanel" aria-expanded="false" aria-controls="filterPanel">';
+echo '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z"/></svg>';
+echo '筛选';
+if ($hasFilter) {
+    echo '<span class="badge bg-primary rounded-pill" style="font-size:.65rem;">' . (
+        ($keyword !== '' ? 1 : 0) +
+        ($author !== '' ? 1 : 0) +
+        ($commentMin > 0 || $commentMax > 0 ? 1 : 0) +
+        ($dateFrom !== '' || $dateTo !== '' ? 1 : 0)
+    ) . '</span>';
+}
+echo '</button>';
 if (user() !== null) {
     echo '<a class="btn btn-primary" href="/post_add.php">发布帖子</a>';
 } else {
     echo '<a class="btn btn-outline-secondary" href="/login.php">登录后发帖</a>';
 }
 echo '</div>';
+echo '</div>';
+
+echo '<div class="card filter-card mb-3 filter-panel show" id="filterPanel">';
+echo '<div class="card-body p-3">';
+echo '<form method="get" action="/index.php" id="filterForm">';
+
+echo '<div class="row g-3 filter-row">';
+
+echo '<div class="col-md-4 col-12">';
+echo '<label class="filter-label" for="keyword">标题关键词</label>';
+echo '<div class="input-group">';
+echo '<span class="input-group-text" style="background:#f8f9fa;">';
+echo '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>';
+echo '</span>';
+echo '<input type="text" class="form-control" id="keyword" name="keyword" placeholder="输入标题关键词..." value="' . e($keyword) . '">';
+echo '</div>';
+echo '</div>';
+
+echo '<div class="col-md-2 col-12">';
+echo '<label class="filter-label" for="author">作者名</label>';
+echo '<input type="text" class="form-control" id="author" name="author" placeholder="作者名" value="' . e($author) . '">';
+echo '</div>';
+
+echo '<div class="col-md-2 col-6">';
+echo '<label class="filter-label" for="comment_min">评论数 ≥</label>';
+echo '<input type="number" class="form-control" id="comment_min" name="comment_min" min="0" placeholder="最低" value="' . ($commentMin > 0 ? e((string)$commentMin) : '') . '">';
+echo '</div>';
+
+echo '<div class="col-md-2 col-6">';
+echo '<label class="filter-label" for="comment_max">评论数 ≤</label>';
+echo '<input type="number" class="form-control" id="comment_max" name="comment_max" min="0" placeholder="最高" value="' . ($commentMax > 0 ? e((string)$commentMax) : '') . '">';
+echo '</div>';
+
+echo '<div class="col-md-2 col-12">';
+echo '<label class="filter-label" for="sort">排序方式</label>';
+echo '<select class="form-select" id="sort" name="sort">';
+$sortOptions = [
+    'time_desc' => '最新发布',
+    'time_asc' => '最早发布',
+    'comment_desc' => '评论最多',
+    'comment_asc' => '评论最少',
+];
+foreach ($sortOptions as $val => $label) {
+    $selected = $sort === $val ? ' selected' : '';
+    echo '<option value="' . e($val) . '"' . $selected . '>' . e($label) . '</option>';
+}
+echo '</select>';
+echo '</div>';
+
+echo '</div>';
+
+echo '<div class="row g-3 mt-2 filter-row">';
+echo '<div class="col-md-4 col-12">';
+echo '<label class="filter-label" for="date_from">发布日期 从</label>';
+echo '<input type="date" class="form-control" id="date_from" name="date_from" value="' . e($dateFrom) . '">';
+echo '</div>';
+echo '<div class="col-md-4 col-12">';
+echo '<label class="filter-label" for="date_to">发布日期 至</label>';
+echo '<input type="date" class="form-control" id="date_to" name="date_to" value="' . e($dateTo) . '">';
+echo '</div>';
+echo '<div class="col-md-4 col-12 d-flex align-items-end gap-2">';
+echo '<button type="submit" class="btn btn-primary flex-grow-1">应用筛选</button>';
+echo '<button type="button" class="btn btn-outline-secondary" onclick="resetFilters()">重置</button>';
+echo '</div>';
+echo '</div>';
+
+echo '</form>';
+echo '</div>';
+echo '</div>';
+
+if ($hasFilter) {
+    echo '<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">';
+    echo '<span class="text-muted small">当前筛选：</span>';
+
+    if ($keyword !== '') {
+        echo '<span class="filter-badge">';
+        echo '标题：' . e($keyword);
+        echo '<span class="remove-btn" onclick="removeFilter(\'keyword\')" title="移除">×</span>';
+        echo '</span>';
+    }
+    if ($author !== '') {
+        echo '<span class="filter-badge">';
+        echo '作者：' . e($author);
+        echo '<span class="remove-btn" onclick="removeFilter(\'author\')" title="移除">×</span>';
+        echo '</span>';
+    }
+    if ($commentMin > 0 || $commentMax > 0) {
+        $cmtLabel = '评论：';
+        if ($commentMin > 0 && $commentMax > 0) {
+            $cmtLabel .= $commentMin . '-' . $commentMax;
+        } elseif ($commentMin > 0) {
+            $cmtLabel .= '≥' . $commentMin;
+        } else {
+            $cmtLabel .= '≤' . $commentMax;
+        }
+        echo '<span class="filter-badge">';
+        echo e($cmtLabel);
+        echo '<span class="remove-btn" onclick="removeFilter(\'comment_min\');removeFilter(\'comment_max\')" title="移除">×</span>';
+        echo '</span>';
+    }
+    if ($dateFrom !== '' || $dateTo !== '') {
+        $dateLabel = '时间：';
+        if ($dateFrom !== '' && $dateTo !== '') {
+            $dateLabel .= $dateFrom . ' 至 ' . $dateTo;
+        } elseif ($dateFrom !== '') {
+            $dateLabel .= '从 ' . $dateFrom;
+        } else {
+            $dateLabel .= '至 ' . $dateTo;
+        }
+        echo '<span class="filter-badge">';
+        echo e($dateLabel);
+        echo '<span class="remove-btn" onclick="removeFilter(\'date_from\');removeFilter(\'date_to\')" title="移除">×</span>';
+        echo '</span>';
+    }
+
+    echo '<a href="/index.php" class="btn btn-sm btn-link text-decoration-none p-0 ms-auto">一键清除全部</a>';
+    echo '</div>';
+}
 
 if (!$posts) {
-    echo '<div class="card card-lite p-4">';
-    echo '<div class="text-muted">暂无帖子，欢迎先注册/登录发布第一篇。</div>';
+    echo '<div class="card card-lite p-5 text-center">';
+    if ($hasFilter) {
+        echo '<div style="font-size:3rem;margin-bottom:1rem;">🔍</div>';
+        echo '<div class="h5 mb-2">没有找到匹配的帖子</div>';
+        echo '<div class="text-muted mb-3">试试调整筛选条件，或清除筛选查看全部</div>';
+        echo '<a class="btn btn-primary" href="/index.php">清除筛选</a>';
+    } else {
+        echo '<div style="font-size:3rem;margin-bottom:1rem;">📝</div>';
+        echo '<div class="h5 mb-2">暂无帖子</div>';
+        echo '<div class="text-muted">欢迎先注册/登录发布第一篇。</div>';
+    }
     echo '</div>';
     render_footer();
+    echo '<script>';
+    echo 'function removeFilter(name) {';
+    echo '  const params = new URLSearchParams(window.location.search);';
+    echo '  params.delete(name);';
+    echo '  params.delete("page");';
+    echo '  const query = params.toString();';
+    echo '  window.location.href = "/index.php" + (query ? "?" + query : "");';
+    echo '}';
+    echo 'function resetFilters() { window.location.href = "/index.php"; }';
+    echo '</script>';
     exit;
 }
 
@@ -106,9 +372,21 @@ if ($pg['pages'] > 1) {
     echo '<ul class="pagination justify-content-center">';
     for ($i = 1; $i <= $pg['pages']; $i++) {
         $active = $i === $pg['page'] ? ' active' : '';
-        echo '<li class="page-item' . $active . '"><a class="page-link" href="/index.php?page=' . e((string)$i) . '">' . e((string)$i) . '</a></li>';
+        $qs = build_query_string(['page' => $i]);
+        echo '<li class="page-item' . $active . '"><a class="page-link" href="/index.php' . e($qs ? $qs : '?page=' . $i) . '">' . e((string)$i) . '</a></li>';
     }
     echo '</ul></nav>';
 }
+
+echo '<script>';
+echo 'function removeFilter(name) {';
+echo '  const params = new URLSearchParams(window.location.search);';
+echo '  params.delete(name);';
+echo '  params.delete("page");';
+echo '  const query = params.toString();';
+echo '  window.location.href = "/index.php" + (query ? "?" + query : "");';
+echo '}';
+echo 'function resetFilters() { window.location.href = "/index.php"; }';
+echo '</script>';
 
 render_footer();
