@@ -99,3 +99,53 @@ function sanitize_rich_html(string $html): string
     return $clean;
 }
 
+function can_user_edit_post(array $config, ?array $user, array $post, int $commentCount = 0): bool
+{
+    if ($user === null) {
+        return false;
+    }
+
+    if ((int)$post['user_id'] !== (int)$user['id']) {
+        return false;
+    }
+
+    $editConfig = $config['post_edit'] ?? [];
+    $timeLimitMinutes = (int)($editConfig['time_limit_minutes'] ?? 30);
+
+    if ($timeLimitMinutes > 0) {
+        $createTime = strtotime((string)$post['create_time']);
+        if ($createTime === false) {
+            return false;
+        }
+        $elapsed = time() - $createTime;
+        if ($elapsed > $timeLimitMinutes * 60) {
+            return false;
+        }
+    }
+
+    $allowWithComments = (bool)($editConfig['allow_with_comments'] ?? false);
+    if (!$allowWithComments && $commentCount > 0) {
+        return false;
+    }
+
+    return true;
+}
+
+function get_edit_remaining_minutes(array $config, array $post): int
+{
+    $editConfig = $config['post_edit'] ?? [];
+    $timeLimitMinutes = (int)($editConfig['time_limit_minutes'] ?? 30);
+    if ($timeLimitMinutes <= 0) {
+        return -1;
+    }
+
+    $createTime = strtotime((string)$post['create_time']);
+    if ($createTime === false) {
+        return 0;
+    }
+
+    $elapsed = time() - $createTime;
+    $remaining = (int)ceil(($timeLimitMinutes * 60 - $elapsed) / 60);
+    return max(0, $remaining);
+}
+

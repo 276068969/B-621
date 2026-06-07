@@ -27,7 +27,7 @@ $total = (int)$pdo->query('SELECT COUNT(*) FROM posts')->fetchColumn();
 $pg = paginate($total, $page, $pageSize);
 
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.title, p.create_time, p.status, u.username
+    'SELECT p.id, p.title, p.create_time, p.update_time, p.status, u.username
      FROM posts p
      JOIN users u ON u.id = p.user_id
      ORDER BY p.create_time DESC
@@ -56,11 +56,11 @@ echo '<div class="card-body p-0">';
 echo '<div class="table-responsive">';
 echo '<table class="table table-hover mb-0">';
 echo '<thead class="table-light"><tr>'; 
-echo '<th class="ps-3">标题</th><th>作者</th><th>时间</th><th>状态</th><th class="text-end pe-3">操作</th>';
+echo '<th class="ps-3">标题</th><th>作者</th><th>发布时间</th><th>更新时间</th><th>状态</th><th class="text-end pe-3">操作</th>';
 echo '</tr></thead><tbody>';
 
 if (!$rows) {
-    echo '<tr><td class="ps-3 py-4 text-muted" colspan="5">暂无数据</td></tr>';
+    echo '<tr><td class="ps-3 py-4 text-muted" colspan="6">暂无数据</td></tr>';
 } else {
     foreach ($rows as $r) {
         $statusBadge = ((int)$r['status'] === 1)
@@ -70,6 +70,7 @@ if (!$rows) {
         echo '<td class="ps-3">' . e((string)$r['title']) . '</td>';
         echo '<td>' . e((string)$r['username']) . '</td>';
         echo '<td class="text-muted small">' . e((string)$r['create_time']) . '</td>';
+        echo '<td class="text-muted small">' . (!empty($r['update_time']) ? e((string)$r['update_time']) : '-') . '</td>';
         echo '<td>' . $statusBadge . '</td>';
         echo '<td class="text-end pe-3">';
         echo '<a class="btn btn-sm btn-outline-secondary" href="/admin/post_edit.php?id=' . e((string)$r['id']) . '">编辑</a> ';

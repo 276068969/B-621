@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.title, p.content, p.create_time, u.username
+    'SELECT p.id, p.user_id, p.title, p.content, p.create_time, p.update_time, u.username
      FROM posts p
      JOIN users u ON u.id = p.user_id
      WHERE p.id = ? AND p.status = 1
@@ -71,13 +71,25 @@ $comments = $stmt->fetchAll();
 
 render_header($config, ['title' => (string)$post['title'] . ' - Lite Forum', 'active' => 'home']);
 
+$canEdit = can_user_edit_post($config, user(), $post, count($comments));
+
 echo '<div class="card card-lite mb-3">';
 echo '<div class="card-body">';
 echo '<div class="d-flex justify-content-between flex-wrap gap-2">';
 echo '<h1 class="h4 mb-0">' . e((string)$post['title']) . '</h1>';
+echo '<div class="d-flex gap-2">';
+if ($canEdit) {
+    echo '<a class="btn btn-sm btn-outline-primary" href="/post_edit.php?id=' . e((string)$id) . '">编辑</a>';
+}
 echo '<a class="btn btn-sm btn-outline-secondary" href="/index.php">返回列表</a>';
 echo '</div>';
-echo '<div class="text-muted small mt-2">作者：' . e((string)$post['username']) . ' · 时间：' . e((string)$post['create_time']) . '</div>';
+echo '</div>';
+echo '<div class="text-muted small mt-2">';
+echo '作者：' . e((string)$post['username']) . ' · 发布：' . e((string)$post['create_time']);
+if (!empty($post['update_time'])) {
+    echo ' · 更新：' . e((string)$post['update_time']);
+}
+echo '</div>';
 echo '<hr>';
 echo '<article class="post-content">' . sanitize_rich_html((string)$post['content']) . '</article>';
 echo '</div>';

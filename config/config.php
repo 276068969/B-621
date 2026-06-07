@@ -23,6 +23,10 @@ return [
         'username' => getenv('ADMIN_USER') ?: 'admin',
         'password' => getenv('ADMIN_PASS') ?: '123456',
     ],
+    'post_edit' => [
+        'time_limit_minutes' => (int)(getenv('POST_EDIT_TIME_LIMIT_MINUTES') ?: 30),
+        'allow_with_comments' => (bool)(getenv('POST_EDIT_ALLOW_WITH_COMMENTS') ?: '0'),
+    ],
     'ui' => [
         'primary' => '#2c3e50',
         'success' => '#1abc9c',

@@ -55,7 +55,7 @@ if ($tab === 'posts') {
     $pg = paginate($total, $page, $pageSize);
 
     $stmt = $pdo->prepare(
-        'SELECT p.id, p.title, p.content, p.create_time,
+        'SELECT p.id, p.user_id, p.title, p.content, p.create_time, p.update_time,
          COALESCE(c.cnt, 0) AS comment_count
          FROM posts p
          LEFT JOIN (
@@ -235,6 +235,8 @@ if ($tab === 'posts') {
                 $excerpt .= '...';
             }
 
+            $postCanEdit = can_user_edit_post($config, $u, $post, (int)$post['comment_count']);
+
             echo '<div class="border-bottom pb-3 mb-3 last:border-0">';
             echo '<div class="d-flex justify-content-between gap-3">';
             echo '<div class="flex-grow-1">';
@@ -242,11 +244,17 @@ if ($tab === 'posts') {
             echo '<div class="text-muted small">' . e((string)$excerpt) . '</div>';
             echo '<div class="text-muted small mt-2">';
             echo '<span class="me-2">📅 ' . e((string)$post['create_time']) . '</span>';
+            if (!empty($post['update_time'])) {
+                echo '<span class="me-2">✏️ ' . e((string)$post['update_time']) . '</span>';
+            }
             echo '<span>💬 ' . e((string)$post['comment_count']) . ' 评论</span>';
             echo '</div>';
             echo '</div>';
-            echo '<div class="text-end">';
+            echo '<div class="text-end d-flex flex-column gap-2">';
             echo '<a class="btn btn-sm btn-outline-secondary" href="/post.php?id=' . e((string)$post['id']) . '">查看</a>';
+            if ($postCanEdit) {
+                echo '<a class="btn btn-sm btn-outline-primary" href="/post_edit.php?id=' . e((string)$post['id']) . '">编辑</a>';
+            }
             echo '</div>';
             echo '</div>';
             echo '</div>';

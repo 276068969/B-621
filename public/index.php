@@ -102,7 +102,7 @@ $total = (int)$totalStmt->fetchColumn();
 
 $pg = paginate($total, $page, $pageSize);
 
-$listSql = 'SELECT p.id, p.title, p.content, p.create_time, u.username,
+$listSql = 'SELECT p.id, p.title, p.content, p.create_time, p.update_time, u.username,
             COALESCE(c.cnt, 0) AS comment_count
      FROM posts p
      JOIN users u ON u.id = p.user_id
@@ -354,10 +354,13 @@ foreach ($posts as $post) {
     echo '<a class="h5 text-decoration-none" href="/post.php?id=' . e((string)$post['id']) . '">' . e((string)$post['title']) . '</a>';
     echo '<div class="text-muted small mt-2">' . e((string)$excerpt) . '</div>';
     echo '<div class="text-muted small mt-3">';
-    echo '<span class="me-2">作者：' . e((string)$post['username']) . '</span>';
-    echo '<span class="me-2">时间：' . e((string)$post['create_time']) . '</span>';
-    echo '<span>评论：' . e((string)$post['comment_count']) . '</span>';
-    echo '</div>';
+            echo '<span class="me-2">作者：' . e((string)$post['username']) . '</span>';
+            echo '<span class="me-2">时间：' . e((string)$post['create_time']) . '</span>';
+            if (!empty($post['update_time'])) {
+                echo '<span class="me-2">更新：' . e((string)$post['update_time']) . '</span>';
+            }
+            echo '<span>评论：' . e((string)$post['comment_count']) . '</span>';
+            echo '</div>';
     echo '</div>';
     echo '<div class="text-end">';
     echo '<a class="btn btn-sm btn-outline-secondary" href="/post.php?id=' . e((string)$post['id']) . '">查看</a>';
