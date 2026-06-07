@@ -1,0 +1,33 @@
+<?php
+declare(strict_types=1);
+
+/*
+ * 配置入口：数据库、会话、后台管理员。
+ * - 生产环境优先读取环境变量（Docker Compose 已注入）。
+ */
+
+return [
+    'app' => [
+        'env' => getenv('APP_ENV') ?: 'development',
+        'session_name' => getenv('SESSION_NAME') ?: 'lite_forum_sess',
+    ],
+    'db' => [
+        'host' => getenv('DB_HOST') ?: '127.0.0.1',
+        'port' => (int)(getenv('DB_PORT') ?: 3306),
+        'name' => getenv('DB_NAME') ?: 'forum',
+        'user' => getenv('DB_USER') ?: 'root',
+        'pass' => getenv('DB_PASS') ?: 'root',
+        'charset' => 'utf8mb4',
+    ],
+    'admin' => [
+        'username' => getenv('ADMIN_USER') ?: 'admin',
+        'password' => getenv('ADMIN_PASS') ?: '123456',
+    ],
+    'ui' => [
+        'primary' => '#2c3e50',
+        'success' => '#1abc9c',
+        'danger' => '#dc3545',
+        'max_width' => '1200px',
+    ],
+];
+
