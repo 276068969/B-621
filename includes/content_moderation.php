@@ -6,13 +6,14 @@ declare(strict_types=1);
  * - 统一的敏感词检测能力
  * - 支持标题、正文、评论等多种内容场景
  * - 提供一致的拦截反馈消息
+ * - 中英文智能匹配，避免正常英文误判
  */
 
-function get_sensitive_words(): array
+function get_sensitive_words_config(): array
 {
-    static $words = null;
-    if ($words !== null) {
-        return $words;
+    static $cachedWordConfig = null;
+    if ($cachedWordConfig !== null) {
+        return $cachedWordConfig;
     }
 
     global $config;
@@ -24,7 +25,7 @@ function get_sensitive_words(): array
             '暴力', '殴打', '伤害', '自杀', '自残', '爆炸', '枪击', '刀砍',
         ],
         'pornography' => [
-            '色情', '黄色', '淫秽', '成人影片', 'AV', '三级片', '一夜情',
+            '色情', '黄色', '淫秽', '成人影片', '三级片', '一夜情',
             '嫖娼', '卖淫', '援交', '包养', '性服务', '裸聊', '裸照',
         ],
         'gambling' => [
@@ -43,12 +44,12 @@ function get_sensitive_words(): array
             '反动', '颠覆', '分裂', '独立', '邪教', '法轮功',
         ],
         'hate' => [
-            '傻逼', '操你妈', '妈的', '草泥马', '傻逼', '白痴', '脑残',
+            '傻逼', '操你妈', '妈的', '草泥马', '白痴', '脑残',
             '废物', '垃圾', '去死', '滚蛋', '杂种', '畜生', '婊子',
             '贱人', '狗娘养的', '王八', '王八蛋',
         ],
         'advertising' => [
-            '加微信', '加QQ', '微信公众号', '扫码关注', '点击领取',
+            '加微信', '微信公众号', '扫码关注', '点击领取',
             '免费领取', '限时优惠', '赚钱秘籍', '月入过万', '在家赚钱',
             '兼职日结', '日赚百元', '快速致富', '一手货源', '厂家直销',
         ],
@@ -58,21 +59,59 @@ function get_sensitive_words(): array
         ],
     ];
 
-    $words = [];
+    $englishWords = [
+        'pornography' => ['porn', 'porno', 'xxx', 'sex', 'sexy', 'nude', 'naked'],
+        'drugs' => ['weed', 'coke', 'heroin', 'cocaine', 'marijuana', 'meth', 'lsd'],
+        'gambling' => ['casino', 'poker', 'blackjack', 'roulette', 'baccarat', 'slot machine'],
+        'hate' => ['fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'motherfucker', 'bullshit'],
+        'advertising' => ['add me', 'click here', 'free money', 'get rich'],
+    ];
+
+    $chineseWords = [];
     foreach ($defaultWords as $category => $categoryWords) {
-        $words = array_merge($words, $categoryWords);
+        foreach ($categoryWords as $word) {
+            $chineseWords[] = [
+                'word' => $word,
+                'category' => $category,
+                'type' => 'chinese',
+            ];
+        }
+    }
+
+    $englishWordsList = [];
+    foreach ($englishWords as $category => $categoryWords) {
+        foreach ($categoryWords as $word) {
+            $englishWordsList[] = [
+                'word' => $word,
+                'category' => $category,
+                'type' => 'english',
+            ];
+        }
     }
 
     if (!empty($customWords)) {
-        $words = array_merge($words, $customWords);
+        foreach ($customWords as $word) {
+            $isEnglish = preg_match('/^[a-zA-Z\s]+$/', $word);
+            $chineseWords[] = [
+                'word' => $word,
+                'category' => 'custom',
+                'type' => $isEnglish ? 'english' : 'chinese',
+            ];
+        }
     }
 
-    $words = array_values(array_unique($words));
-    usort($words, function ($a, $b) {
-        return strlen($b) - strlen($a);
+    $allWords = array_merge($chineseWords, $englishWordsList);
+    usort($allWords, function ($a, $b) {
+        return strlen($b['word']) - strlen($a['word']);
     });
 
-    return $words;
+    $cachedWordConfig = [
+        'all_words' => $allWords,
+        'chinese_words' => $chineseWords,
+        'english_words' => $englishWordsList,
+    ];
+
+    return $cachedWordConfig;
 }
 
 function get_sensitive_word_categories(): array
@@ -87,7 +126,26 @@ function get_sensitive_word_categories(): array
         'hate' => '辱骂攻击',
         'advertising' => '广告推广',
         'spam' => '垃圾信息',
+        'custom' => '自定义',
     ];
+}
+
+function is_moderation_enabled(): bool
+{
+    global $config;
+
+    $enabled = $config['moderation']['enabled'] ?? true;
+
+    if (is_bool($enabled)) {
+        return $enabled;
+    }
+
+    if (is_string($enabled)) {
+        $enabledLower = strtolower(trim($enabled));
+        return in_array($enabledLower, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    return (bool)$enabled;
 }
 
 function detect_sensitive_words(string $content): array
@@ -100,54 +158,63 @@ function detect_sensitive_words(string $content): array
         ];
     }
 
-    $words = get_sensitive_words();
+    $wordConfig = get_sensitive_words_config();
+    $allWords = $wordConfig['all_words'];
     $matched = [];
+    $matchedWords = [];
 
     $contentLower = mb_strtolower($content, 'UTF-8');
 
-    foreach ($words as $word) {
+    foreach ($allWords as $wordItem) {
+        $word = $wordItem['word'];
         $wordLower = mb_strtolower($word, 'UTF-8');
-        if (mb_strpos($contentLower, $wordLower) !== false) {
-            if (!in_array($word, $matched)) {
-                $matched[] = $word;
+        $type = $wordItem['type'];
+        $category = $wordItem['category'];
+
+        $isMatched = false;
+
+        if ($type === 'english') {
+            $pattern = '/\b' . preg_quote($wordLower, '/') . '\b/i';
+            if (preg_match($pattern, $contentLower)) {
+                $isMatched = true;
             }
+        } else {
+            if (mb_strpos($contentLower, $wordLower) !== false) {
+                $isMatched = true;
+            }
+        }
+
+        if ($isMatched && !in_array($word, $matchedWords)) {
+            $matched[] = [
+                'word' => $word,
+                'category' => $category,
+                'type' => $type,
+            ];
+            $matchedWords[] = $word;
         }
     }
 
     $categoryMap = [];
     $categories = get_sensitive_word_categories();
-    $allCategories = [
-        'violence' => ['杀人', '放火', '抢劫', '贩毒', '吸毒', '走私', '绑架', '勒索', '暴力', '殴打', '伤害', '自杀', '自残', '爆炸', '枪击', '刀砍'],
-        'pornography' => ['色情', '黄色', '淫秽', '成人影片', 'AV', '三级片', '一夜情', '嫖娼', '卖淫', '援交', '包养', '性服务', '裸聊', '裸照'],
-        'gambling' => ['赌博', '博彩', '赌场', '彩票', '开奖', '下注', '赌球', '赌马', '老虎机', '百家乐', '二八杠', '炸金花', '斗牛'],
-        'drugs' => ['毒品', '海洛因', '冰毒', '可卡因', '大麻', '摇头丸', 'K粉', '吗啡', '罂粟', '吸毒', '贩毒', '制毒'],
-        'fraud' => ['诈骗', '传销', '非法集资', '庞氏骗局', '刷单', '刷信誉', '代刷', '套现', '洗钱', '假币'],
-        'politics' => ['反动', '颠覆', '分裂', '独立', '邪教', '法轮功'],
-        'hate' => ['傻逼', '操你妈', '妈的', '草泥马', '白痴', '脑残', '废物', '垃圾', '去死', '滚蛋', '杂种', '畜生', '婊子', '贱人', '狗娘养的', '王八', '王八蛋'],
-        'advertising' => ['加微信', '加QQ', '微信公众号', '扫码关注', '点击领取', '免费领取', '限时优惠', '赚钱秘籍', '月入过万', '在家赚钱', '兼职日结', '日赚百元', '快速致富', '一手货源', '厂家直销'],
-        'spam' => ['不看后悔', '不转不是', '转发有礼', '分享有礼', '点赞有礼', '人肉搜索', '求转发', '求扩散'],
-    ];
 
-    foreach ($matched as $word) {
-        foreach ($allCategories as $catKey => $catWords) {
-            if (in_array($word, $catWords)) {
-                if (!isset($categoryMap[$catKey])) {
-                    $categoryMap[$catKey] = [
-                        'name' => $categories[$catKey] ?? $catKey,
-                        'words' => [],
-                    ];
-                }
-                if (!in_array($word, $categoryMap[$catKey]['words'])) {
-                    $categoryMap[$catKey]['words'][] = $word;
-                }
-                break;
-            }
+    foreach ($matched as $item) {
+        $catKey = $item['category'];
+        if (!isset($categoryMap[$catKey])) {
+            $categoryMap[$catKey] = [
+                'name' => $categories[$catKey] ?? $catKey,
+                'words' => [],
+            ];
+        }
+        if (!in_array($item['word'], $categoryMap[$catKey]['words'])) {
+            $categoryMap[$catKey]['words'][] = $item['word'];
         }
     }
 
+    $matchedWordList = array_column($matched, 'word');
+
     return [
-        'has_sensitive' => !empty($matched),
-        'matched_words' => $matched,
+        'has_sensitive' => !empty($matchedWordList),
+        'matched_words' => $matchedWordList,
         'category_map' => $categoryMap,
     ];
 }
@@ -195,10 +262,7 @@ function get_moderation_error_message(array $result, string $scene = 'content'):
 
 function moderate_content(string $content, string $scene = 'content'): array
 {
-    global $config;
-
-    $enabled = $config['moderation']['enabled'] ?? true;
-    if (!$enabled) {
+    if (!is_moderation_enabled()) {
         return [
             'passed' => true,
             'has_sensitive' => false,

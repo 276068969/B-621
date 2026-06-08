@@ -25,7 +25,9 @@ return [
     ],
     'post_edit' => [
         'time_limit_minutes' => (int)(getenv('POST_EDIT_TIME_LIMIT_MINUTES') ?: 30),
-        'allow_with_comments' => (bool)(getenv('POST_EDIT_ALLOW_WITH_COMMENTS') ?: '0'),
+        'allow_with_comments' => (getenv('POST_EDIT_ALLOW_WITH_COMMENTS') !== false)
+            ? in_array(strtolower(getenv('POST_EDIT_ALLOW_WITH_COMMENTS')), ['1', 'true', 'yes', 'on'], true)
+            : false,
     ],
     'ui' => [
         'primary' => '#2c3e50',
@@ -34,7 +36,9 @@ return [
         'max_width' => '1200px',
     ],
     'moderation' => [
-        'enabled' => (bool)(getenv('MODERATION_ENABLED') ?: '1'),
+        'enabled' => (getenv('MODERATION_ENABLED') !== false)
+            ? in_array(strtolower(getenv('MODERATION_ENABLED')), ['1', 'true', 'yes', 'on'], true)
+            : true,
         'sensitive_words' => [],
     ],
 ];
