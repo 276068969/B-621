@@ -205,19 +205,22 @@ function render_footer(): void
     echo 'window.alert = function(msg) { showModal("提示", msg); };';
     
     // 全局 Confirm Modal 封装
-    echo 'function showConfirmModal(title, message, confirmUrl) {';
+    echo 'function showConfirmModal(title, message, confirmUrl, confirmText, confirmClass) {';
+    echo '  confirmText = confirmText || "确认删除";';
+    echo '  confirmClass = confirmClass || "btn-danger";';
+    echo '  const titleClass = confirmClass.includes("danger") ? "text-danger" : "text-success";';
     echo '  const modalHtml = `';
     echo '    <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">';
     echo '      <div class="modal-dialog modal-dialog-centered">';
     echo '        <div class="modal-content border-0 shadow-lg">';
     echo '          <div class="modal-header border-0">';
-    echo '            <h5 class="modal-title fw-bold text-danger">${title}</h5>';
+    echo '            <h5 class="modal-title fw-bold ${titleClass}">${title}</h5>';
     echo '            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>';
     echo '          </div>';
     echo '          <div class="modal-body text-muted">${message}</div>';
     echo '          <div class="modal-footer border-0">';
     echo '            <button type="button" class="btn btn-outline-secondary px-4 rounded-pill" data-bs-dismiss="modal">取消</button>';
-    echo '            <a href="${confirmUrl}" class="btn btn-danger px-4 rounded-pill">确认删除</a>';
+    echo '            <a href="${confirmUrl}" class="btn ${confirmClass} px-4 rounded-pill">${confirmText}</a>';
     echo '          </div>';
     echo '        </div>';
     echo '      </div>';
