@@ -80,6 +80,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $modResult = moderate_post($title, $content);
+        if (!$modResult['passed']) {
+            if (!$modResult['title_passed']) {
+                $errors['title'] = $modResult['title_result']['message'];
+            }
+            if (!$modResult['content_passed']) {
+                $errors['content'] = $modResult['content_result']['message'];
+            }
+        }
+    }
+
+    if (!$errors) {
         if (!can_user_edit_post($config, $u, $post, $commentCount)) {
             flash_set('danger', '编辑时限已过或已有评论，无法保存修改。');
             redirect('/post.php?id=' . $id);

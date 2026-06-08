@@ -37,6 +37,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $modResult = moderate_post($title, $content);
+        if (!$modResult['passed']) {
+            if (!$modResult['title_passed']) {
+                $errors['title'] = $modResult['title_result']['message'];
+            }
+            if (!$modResult['content_passed']) {
+                $errors['content'] = $modResult['content_result']['message'];
+            }
+        }
+    }
+
+    if (!$errors) {
         $u = user();
         $stmt = $pdo->prepare('INSERT INTO posts (user_id, title, content, status) VALUES (?, ?, ?, 1)');
         $stmt->execute([(int)$u['id'], $title, $content]);

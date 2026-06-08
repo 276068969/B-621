@@ -35,6 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/post.php?id=' . $id);
     }
 
+    $modResult = moderate_comment($content);
+    if (!$modResult['passed']) {
+        flash_set('danger', $modResult['message']);
+        redirect('/post.php?id=' . $id);
+    }
+
     $u = user();
     $stmt = $pdo->prepare('INSERT INTO comments (post_id, user_id, content, status) VALUES (?, ?, ?, 1)');
     $stmt->execute([$id, (int)$u['id'], $content]);

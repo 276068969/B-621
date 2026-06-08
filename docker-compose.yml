@@ -24,6 +24,7 @@ services:
       DB_USER: forum
       DB_PASS: forum
       SESSION_NAME: lite_forum_sess
+      MODERATION_ENABLED: 1
       TZ: Asia/Shanghai
     ports:
       - "8922:80"

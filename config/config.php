@@ -33,5 +33,9 @@ return [
         'danger' => '#dc3545',
         'max_width' => '1200px',
     ],
+    'moderation' => [
+        'enabled' => (bool)(getenv('MODERATION_ENABLED') ?: '1'),
+        'sensitive_words' => [],
+    ],
 ];
 

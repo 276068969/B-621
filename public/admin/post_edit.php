@@ -50,6 +50,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $modResult = moderate_post($title, $content);
+        if (!$modResult['passed']) {
+            if (!$modResult['title_passed']) {
+                $errors['title'] = $modResult['title_result']['message'];
+            }
+            if (!$modResult['content_passed']) {
+                $errors['content'] = $modResult['content_result']['message'];
+            }
+        }
+    }
+
+    if (!$errors) {
         $stmt = $pdo->prepare('UPDATE posts SET title = ?, content = ?, update_time = NOW() WHERE id = ?');
         $stmt->execute([$title, $content, $id]);
         flash_set('success', '帖子已更新。');
