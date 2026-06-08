@@ -75,6 +75,8 @@ $stmt = $pdo->prepare(
 $stmt->execute([$id]);
 $comments = $stmt->fetchAll();
 
+$hotPosts = get_hot_posts($pdo, 6, $id);
+
 render_header($config, ['title' => (string)$post['title'] . ' - Lite Forum', 'active' => 'home']);
 
 $canEdit = can_user_edit_post($config, user(), $post, count($comments));
@@ -150,6 +152,32 @@ if (user() === null) {
 echo '</div>';
 echo '</div>';
 
+if ($hotPosts) {
+    echo '<div class="card card-lite mb-3 border-0 shadow-sm">';
+    echo '<div class="card-body p-4">';
+    echo '<div class="d-flex align-items-center gap-2 mb-3">';
+    echo '<span style="font-size:1.1rem;">🔥</span>';
+    echo '<div class="fw-semibold fs-5">热门讨论</div>';
+    echo '</div>';
+    echo '<div class="row g-3">';
+    foreach ($hotPosts as $hp) {
+        echo '<div class="col-md-6 col-12">';
+        echo '<a href="/post.php?id=' . e((string)$hp['id']) . '" class="text-decoration-none">';
+        echo '<div class="hot-recommend-item">';
+        echo '<div class="hot-recommend-title">' . e((string)$hp['title']) . '</div>';
+        echo '<div class="hot-recommend-meta text-muted small">';
+        echo '<span class="me-2">' . e((string)$hp['username']) . '</span>';
+        echo '<span class="hot-comment-badge">' . e((string)$hp['comment_count']) . ' 评论</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '</a>';
+        echo '</div>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+}
+
 // 前端校验
 echo '<script>';
 echo '(() => {';
@@ -167,6 +195,14 @@ echo '    }, false);';
 echo '  });';
 echo '})();';
 echo '</script>';
+
+echo '<style>';
+echo '.hot-recommend-item{padding:.75rem 1rem;border-radius:.5rem;background:#f8f9fa;transition:all .2s;height:100%;}';
+echo '.hot-recommend-item:hover{background:#e9ecef;transform:translateY(-2px);}';
+echo '.hot-recommend-title{color:#212529;font-size:.95rem;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4;}';
+echo '.hot-recommend-meta{margin-top:.5rem;display:flex;align-items:center;}';
+echo '.hot-comment-badge{font-size:.75rem;color:#495057;background:#dee2e6;padding:.15rem .5rem;border-radius:1rem;}';
+echo '</style>';
 
 render_footer();
 

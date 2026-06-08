@@ -126,6 +126,8 @@ $stmt->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
 $stmt->execute();
 $posts = $stmt->fetchAll();
 
+$hotPosts = get_hot_posts($pdo, 8);
+
 function build_query_string(array $overrides = []): string
 {
     $params = $_GET;
@@ -154,6 +156,18 @@ echo '.filter-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.3
 echo '.filter-badge .remove-btn{cursor:pointer;opacity:.6;}';
 echo '.filter-badge .remove-btn:hover{opacity:1;}';
 echo '.filter-toggle-btn{display:none;}';
+echo '.hot-rank-card{border:0;border-radius:.5rem;box-shadow:0 .125rem .25rem rgba(0,0,0,.075);background:#fff;}';
+echo '.hot-rank-icon{font-size:1.1rem;}';
+echo '.hot-rank-list{list-style:none;padding:0;margin:0;}';
+echo '.hot-rank-item{display:flex;gap:.75rem;padding:.65rem 0;border-bottom:1px solid #f1f3f5;}';
+echo '.hot-rank-item:last-child{border-bottom:0;}';
+echo '.hot-rank-num{display:inline-flex;align-items:center;justify-content:center;min-width:1.5rem;height:1.5rem;font-size:.8rem;font-weight:700;color:#868e96;background:#f1f3f5;border-radius:.25rem;flex-shrink:0;}';
+echo '.hot-rank-top .hot-rank-num{background:linear-gradient(135deg,#ff6b6b,#ff8787);color:#fff;}';
+echo '.hot-rank-content{flex-grow:1;min-width:0;}';
+echo '.hot-rank-title{display:block;color:#212529;font-size:.9rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s;}';
+echo '.hot-rank-title:hover{color:#228be6;}';
+echo '.hot-rank-meta{margin-top:.35rem;display:flex;align-items:center;}';
+echo '.hot-comment-badge{font-size:.75rem;color:#495057;background:#e9ecef;padding:.15rem .5rem;border-radius:1rem;}';
 echo '@media (max-width: 768px){';
 echo '  .filter-toggle-btn{display:inline-flex;align-items:center;gap:.35rem;}';
 echo '  .filter-panel{display:none;}';
@@ -309,6 +323,9 @@ if ($hasFilter) {
     echo '</div>';
 }
 
+echo '<div class="row g-4">';
+echo '<div class="col-lg-8 col-md-12">';
+
 if (!$posts) {
     echo '<div class="card card-lite p-5 text-center">';
     if ($hasFilter) {
@@ -322,64 +339,88 @@ if (!$posts) {
         echo '<div class="text-muted">欢迎先注册/登录发布第一篇。</div>';
     }
     echo '</div>';
-    render_footer();
-    echo '<script>';
-    echo 'function removeFilter(name) {';
-    echo '  const params = new URLSearchParams(window.location.search);';
-    echo '  params.delete(name);';
-    echo '  params.delete("page");';
-    echo '  const query = params.toString();';
-    echo '  window.location.href = "/index.php" + (query ? "?" + query : "");';
-    echo '}';
-    echo 'function resetFilters() { window.location.href = "/index.php"; }';
-    echo '</script>';
-    exit;
+} else {
+    foreach ($posts as $post) {
+        $excerptSource = strip_tags(sanitize_rich_html((string)$post['content']));
+        if (function_exists('mb_substr')) {
+            $excerpt = mb_substr($excerptSource, 0, 120);
+        } else {
+            $excerpt = substr($excerptSource, 0, 120);
+        }
+        if (strlen($excerptSource) > strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+
+        echo '<div class="card card-lite mb-3">';
+        echo '<div class="card-body">';
+        echo '<div class="d-flex justify-content-between gap-3">';
+        echo '<div class="flex-grow-1">';
+        echo '<a class="h5 text-decoration-none" href="/post.php?id=' . e((string)$post['id']) . '">' . e((string)$post['title']) . '</a>';
+        echo '<div class="text-muted small mt-2">' . e((string)$excerpt) . '</div>';
+        echo '<div class="text-muted small mt-3">';
+                echo '<span class="me-2">作者：' . e((string)$post['username']) . '</span>';
+                echo '<span class="me-2">时间：' . e((string)$post['create_time']) . '</span>';
+                if (!empty($post['update_time'])) {
+                    echo '<span class="me-2">更新：' . e((string)$post['update_time']) . '</span>';
+                }
+                echo '<span>评论：' . e((string)$post['comment_count']) . '</span>';
+                echo '</div>';
+        echo '</div>';
+        echo '<div class="text-end">';
+        echo '<a class="btn btn-sm btn-outline-secondary" href="/post.php?id=' . e((string)$post['id']) . '">查看</a>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    if ($pg['pages'] > 1) {
+        echo '<nav aria-label="Page navigation">';
+        echo '<ul class="pagination justify-content-center">';
+        for ($i = 1; $i <= $pg['pages']; $i++) {
+            $active = $i === $pg['page'] ? ' active' : '';
+            $qs = build_query_string(['page' => $i]);
+            echo '<li class="page-item' . $active . '"><a class="page-link" href="/index.php' . e($qs ? $qs : '?page=' . $i) . '">' . e((string)$i) . '</a></li>';
+        }
+        echo '</ul></nav>';
+    }
 }
 
-foreach ($posts as $post) {
-    $excerptSource = strip_tags(sanitize_rich_html((string)$post['content']));
-    if (function_exists('mb_substr')) {
-        $excerpt = mb_substr($excerptSource, 0, 120);
-    } else {
-        $excerpt = substr($excerptSource, 0, 120);
-    }
-    if (strlen($excerptSource) > strlen($excerpt)) {
-        $excerpt .= '...';
-    }
+echo '</div>';
+echo '<div class="col-lg-4 col-md-12">';
 
-    echo '<div class="card card-lite mb-3">';
-    echo '<div class="card-body">';
-    echo '<div class="d-flex justify-content-between gap-3">';
-    echo '<div class="flex-grow-1">';
-    echo '<a class="h5 text-decoration-none" href="/post.php?id=' . e((string)$post['id']) . '">' . e((string)$post['title']) . '</a>';
-    echo '<div class="text-muted small mt-2">' . e((string)$excerpt) . '</div>';
-    echo '<div class="text-muted small mt-3">';
-            echo '<span class="me-2">作者：' . e((string)$post['username']) . '</span>';
-            echo '<span class="me-2">时间：' . e((string)$post['create_time']) . '</span>';
-            if (!empty($post['update_time'])) {
-                echo '<span class="me-2">更新：' . e((string)$post['update_time']) . '</span>';
-            }
-            echo '<span>评论：' . e((string)$post['comment_count']) . '</span>';
-            echo '</div>';
-    echo '</div>';
-    echo '<div class="text-end">';
-    echo '<a class="btn btn-sm btn-outline-secondary" href="/post.php?id=' . e((string)$post['id']) . '">查看</a>';
-    echo '</div>';
-    echo '</div>';
-    echo '</div>';
-    echo '</div>';
+echo '<div class="card card-lite hot-rank-card">';
+echo '<div class="card-body">';
+echo '<div class="d-flex align-items-center gap-2 mb-3">';
+echo '<span class="hot-rank-icon">🔥</span>';
+echo '<h2 class="h6 mb-0 fw-bold">热门帖子榜</h2>';
+echo '</div>';
+
+if (!$hotPosts) {
+    echo '<div class="text-muted small text-center py-3">暂无热门帖子</div>';
+} else {
+    echo '<ol class="hot-rank-list">';
+    foreach ($hotPosts as $index => $hp) {
+        $rankClass = $index < 3 ? ' hot-rank-top' : '';
+        echo '<li class="hot-rank-item' . $rankClass . '">';
+        echo '<span class="hot-rank-num">' . ($index + 1) . '</span>';
+        echo '<div class="hot-rank-content">';
+        echo '<a class="hot-rank-title text-decoration-none" href="/post.php?id=' . e((string)$hp['id']) . '">' . e((string)$hp['title']) . '</a>';
+        echo '<div class="hot-rank-meta text-muted small">';
+        echo '<span class="me-2">' . e((string)$hp['username']) . '</span>';
+        echo '<span class="hot-comment-badge">' . e((string)$hp['comment_count']) . ' 评论</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '</li>';
+    }
+    echo '</ol>';
 }
 
-if ($pg['pages'] > 1) {
-    echo '<nav aria-label="Page navigation">';
-    echo '<ul class="pagination justify-content-center">';
-    for ($i = 1; $i <= $pg['pages']; $i++) {
-        $active = $i === $pg['page'] ? ' active' : '';
-        $qs = build_query_string(['page' => $i]);
-        echo '<li class="page-item' . $active . '"><a class="page-link" href="/index.php' . e($qs ? $qs : '?page=' . $i) . '">' . e((string)$i) . '</a></li>';
-    }
-    echo '</ul></nav>';
-}
+echo '</div>';
+echo '</div>';
+
+echo '</div>';
+echo '</div>';
 
 echo '<script>';
 echo 'function removeFilter(name) {';

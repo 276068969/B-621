@@ -149,3 +149,49 @@ function get_edit_remaining_minutes(array $config, array $post): int
     return max(0, $remaining);
 }
 
+function get_hot_posts(PDO $pdo, int $limit = 10, int $excludeId = 0): array
+{
+    $whereConditions = ['p.status = 1'];
+    $params = [];
+
+    if ($excludeId > 0) {
+        $whereConditions[] = 'p.id != :exclude_id';
+        $params[':exclude_id'] = $excludeId;
+    }
+
+    $whereSql = implode(' AND ', $whereConditions);
+
+    $sql = 'SELECT p.id, p.title, p.create_time, u.username,
+            COALESCE(c_stats.comment_count, 0) AS comment_count,
+            COALESCE(c_stats.first_comment_time, p.create_time) AS first_comment_time,
+            COALESCE(c_stats.last_comment_time, p.create_time) AS last_comment_time
+     FROM posts p
+     JOIN users u ON u.id = p.user_id
+     LEFT JOIN (
+         SELECT post_id,
+                COUNT(*) AS comment_count,
+                MIN(create_time) AS first_comment_time,
+                MAX(create_time) AS last_comment_time
+         FROM comments
+         WHERE status = 1
+         GROUP BY post_id
+     ) c_stats ON c_stats.post_id = p.id
+     WHERE ' . $whereSql . '
+     ORDER BY (
+         LOG(2, COALESCE(c_stats.comment_count, 0) + 1) * 40
+         + (1 / (1 + (UNIX_TIMESTAMP(NOW()) - UNIX_TIMESTAMP(p.create_time)) / 3600 / 24)) * 30
+         + (UNIX_TIMESTAMP(COALESCE(c_stats.last_comment_time, p.create_time))
+            - UNIX_TIMESTAMP(COALESCE(c_stats.first_comment_time, p.create_time))) / 3600 / 24 * 30
+     ) DESC
+     LIMIT :limit';
+
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value);
+    }
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
