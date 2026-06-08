@@ -16,6 +16,7 @@ Desktop.ini
 .trae/
 .codex/
 .codex-fixes/
+.tmp-solo/
 
 # ====================== 3、日志、临时文件、全局缓存 ======================
 *.log
