@@ -77,15 +77,34 @@ $comments = $stmt->fetchAll();
 
 $hotPosts = get_hot_posts($pdo, 6, $id);
 
+$currentUser = user();
+$isFavorited = false;
+if ($currentUser !== null) {
+    $isFavorited = is_post_favorited($pdo, (int)$currentUser['id'], $id);
+}
+
 render_header($config, ['title' => (string)$post['title'] . ' - Lite Forum', 'active' => 'home']);
 
 $canEdit = can_user_edit_post($config, user(), $post, count($comments));
 
 echo '<div class="card card-lite mb-3" id="post-top">';
 echo '<div class="card-body">';
+$favIcon = $isFavorited ? '★' : '☆';
+$favClass = $isFavorited ? 'btn-favorite active' : 'btn-favorite';
+$favTitle = $isFavorited ? '取消收藏' : '收藏';
+
 echo '<div class="d-flex justify-content-between flex-wrap gap-2">';
 echo '<h1 class="h4 mb-0">' . e((string)$post['title']) . '</h1>';
 echo '<div class="d-flex gap-2">';
+if ($currentUser !== null) {
+    echo '<form method="post" action="/favorite_toggle.php" class="favorite-form" data-post-id="' . $id . '">';
+    echo '<input type="hidden" name="post_id" value="' . $id . '">';
+    echo '<button type="submit" class="btn btn-sm ' . $favClass . '" title="' . e($favTitle) . '">';
+    echo '<span class="favorite-icon">' . $favIcon . '</span>';
+    echo '<span class="favorite-text ms-1">' . e($favTitle) . '</span>';
+    echo '</button>';
+    echo '</form>';
+}
 if ($canEdit) {
     echo '<a class="btn btn-sm btn-outline-primary" href="/post_edit.php?id=' . e((string)$id) . '">编辑</a>';
 }
@@ -204,6 +223,14 @@ echo '<div class="reading-toolbar-progress" id="readingProgressBar"></div>';
 echo '<button class="reading-toolbar-btn" id="btnBackToTop" title="回到顶部">';
 echo '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>';
 echo '</button>';
+if ($currentUser !== null) {
+    $favToolbarClass = $isFavorited ? 'favorite-btn active' : 'favorite-btn';
+    $favToolbarTitle = $isFavorited ? '取消收藏' : '收藏';
+    $favToolbarIcon = $isFavorited ? '#ffc107' : 'currentColor';
+    echo '<button class="reading-toolbar-btn ' . $favToolbarClass . '" id="btnFavorite" title="' . e($favToolbarTitle) . '" data-post-id="' . $id . '" data-favorited="' . ($isFavorited ? '1' : '0') . '">';
+    echo '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="' . ($isFavorited ? 'currentColor' : 'none') . '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    echo '</button>';
+}
 echo '<button class="reading-toolbar-btn" id="btnCopyLink" title="复制链接">';
 echo '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
 echo '</button>';
@@ -287,6 +314,59 @@ echo '}';
 echo 'var authorOnlyToggle = document.getElementById("author-only-toggle");';
 echo 'var btnAuthorOnly = document.getElementById("btnAuthorOnly");';
 echo 'var authorOnlyMode = false;';
+
+echo 'var btnFavorite = document.getElementById("btnFavorite");';
+echo 'function updateFavoriteUI(isFavorited) {';
+echo '  var headerForm = document.querySelector(".favorite-form");';
+echo '  var headerBtn = headerForm ? headerForm.querySelector("button[type=submit]") : null;';
+echo '  var headerIcon = headerForm ? headerForm.querySelector(".favorite-icon") : null;';
+echo '  var headerText = headerForm ? headerForm.querySelector(".favorite-text") : null;';
+echo '  if (headerBtn) {';
+echo '    if (isFavorited) { headerBtn.classList.add("active"); headerBtn.setAttribute("title", "取消收藏"); }';
+echo '    else { headerBtn.classList.remove("active"); headerBtn.setAttribute("title", "收藏"); }';
+echo '  }';
+echo '  if (headerIcon) headerIcon.textContent = isFavorited ? "★" : "☆";';
+echo '  if (headerText) headerText.textContent = isFavorited ? "取消收藏" : "收藏";';
+echo '  if (btnFavorite) {';
+echo '    if (isFavorited) { btnFavorite.classList.add("active"); btnFavorite.setAttribute("title", "取消收藏"); btnFavorite.setAttribute("data-favorited", "1"); }';
+echo '    else { btnFavorite.classList.remove("active"); btnFavorite.setAttribute("title", "收藏"); btnFavorite.setAttribute("data-favorited", "0"); }';
+echo '    var svg = btnFavorite.querySelector("svg");';
+echo '    if (svg) svg.setAttribute("fill", isFavorited ? "currentColor" : "none");';
+echo '  }';
+echo '}';
+echo 'function toggleFavorite(postId) {';
+echo '  if (!postId || btnFavorite && btnFavorite.disabled) return;';
+echo '  if (btnFavorite) btnFavorite.disabled = true;';
+echo '  var formData = new FormData();';
+echo '  formData.append("post_id", postId);';
+echo '  var xhr = new XMLHttpRequest();';
+echo '  xhr.open("POST", "/favorite_toggle.php", true);';
+echo '  xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");';
+echo '  xhr.onload = function() {';
+echo '    if (btnFavorite) btnFavorite.disabled = false;';
+echo '    try {';
+echo '      var data = JSON.parse(xhr.responseText);';
+echo '      if (data.success) { updateFavoriteUI(data.favorited); showToast(data.message); }';
+echo '    } catch (err) { console.error("收藏操作失败", err); }';
+echo '  };';
+echo '  xhr.onerror = function() { if (btnFavorite) btnFavorite.disabled = false; console.error("网络错误"); };';
+echo '  xhr.send(formData);';
+echo '}';
+echo 'if (btnFavorite) {';
+echo '  btnFavorite.addEventListener("click", function() {';
+echo '    var postId = btnFavorite.getAttribute("data-post-id");';
+echo '    toggleFavorite(postId);';
+echo '  });';
+echo '}';
+echo 'var favForm = document.querySelector(".favorite-form");';
+echo 'if (favForm) {';
+echo '  favForm.addEventListener("submit", function(e) {';
+echo '    e.preventDefault();';
+echo '    var postId = favForm.getAttribute("data-post-id");';
+echo '    toggleFavorite(postId);';
+echo '  });';
+echo '}';
+
 echo 'function toggleAuthorOnly() {';
 echo '  authorOnlyMode = !authorOnlyMode;';
 echo '  var commentItems = document.querySelectorAll(".comment-item");';
@@ -362,6 +442,12 @@ echo '.hot-recommend-title{color:#212529;font-size:.95rem;font-weight:500;displa
 echo '.hot-recommend-meta{margin-top:.5rem;display:flex;align-items:center;}';
 echo '.hot-comment-badge{font-size:.75rem;color:#495057;background:#dee2e6;padding:.15rem .5rem;border-radius:1rem;}';
 echo '';
+echo '.btn-favorite{color:#ffc107;border-color:#ffc107;background:transparent;transition:all .2s;}';
+echo '.btn-favorite:hover{background:#fff3cd;border-color:#ffc107;color:#ffc107;}';
+echo '.btn-favorite.active{background:#ffc107;border-color:#ffc107;color:#fff;}';
+echo '.btn-favorite.active:hover{background:#ffb300;border-color:#ffb300;color:#fff;}';
+echo '.favorite-icon{font-size:1rem;line-height:1;}';
+echo '';
 echo '.comment-item{transition:all .2s ease;}';
 echo '.comment-is-author{background:linear-gradient(135deg, rgba(44,62,80,.03) 0%, rgba(26,188,156,.03) 100%);border-color:rgba(44,62,80,.15)!important;}';
 echo '.comment-anchor{transition:color .2s;}';
@@ -373,6 +459,8 @@ echo '.reading-toolbar-btn{width:36px;height:36px;border:none;background:transpa
 echo '.reading-toolbar-btn:hover{background:rgba(44,62,80,.08);color:var(--bs-primary);transform:scale(1.1);}';
 echo '.reading-toolbar-btn.active{background:var(--bs-primary);color:#fff;}';
 echo '.reading-toolbar-btn.active:hover{background:var(--bs-primary);color:#fff;transform:scale(1.1);}';
+echo '.reading-toolbar-btn.favorite-btn.active{background:#ffc107;color:#fff;}';
+echo '.reading-toolbar-btn.favorite-btn.active:hover{background:#ffb300;color:#fff;}';
 echo '.reading-toolbar-percent{font-size:.65rem;color:#adb5bd;font-weight:500;line-height:1;}';
 echo '';
 echo '.reading-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);background:rgba(0,0,0,.8);color:#fff;padding:12px 24px;border-radius:8px;font-size:.9rem;z-index:9999;opacity:0;transition:all .3s ease;pointer-events:none;}';

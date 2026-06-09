@@ -128,6 +128,21 @@ $posts = $stmt->fetchAll();
 
 $hotPosts = get_hot_posts($pdo, 8);
 
+$currentUser = user();
+$favoritedMap = [];
+if ($currentUser !== null && $posts) {
+    $postIds = array_column($posts, 'id');
+    if ($postIds) {
+        $placeholders = implode(',', array_fill(0, count($postIds), '?'));
+        $stmt = $pdo->prepare('SELECT post_id FROM favorites WHERE user_id = ? AND post_id IN (' . $placeholders . ')');
+        $stmt->execute(array_merge([(int)$currentUser['id']], $postIds));
+        $favoritedRows = $stmt->fetchAll();
+        foreach ($favoritedRows as $fr) {
+            $favoritedMap[(int)$fr['post_id']] = true;
+        }
+    }
+}
+
 function build_query_string(array $overrides = []): string
 {
     $params = $_GET;
@@ -351,6 +366,12 @@ if (!$posts) {
             $excerpt .= '...';
         }
 
+        $postId = (int)$post['id'];
+        $isFavorited = isset($favoritedMap[$postId]);
+        $favIcon = $isFavorited ? '★' : '☆';
+        $favClass = $isFavorited ? 'btn-favorite active' : 'btn-favorite';
+        $favTitle = $isFavorited ? '取消收藏' : '收藏';
+
         echo '<div class="card card-lite mb-3">';
         echo '<div class="card-body">';
         echo '<div class="d-flex justify-content-between gap-3">';
@@ -366,7 +387,16 @@ if (!$posts) {
                 echo '<span>评论：' . e((string)$post['comment_count']) . '</span>';
                 echo '</div>';
         echo '</div>';
-        echo '<div class="text-end">';
+        echo '<div class="d-flex flex-column gap-2 text-end">';
+        if ($currentUser !== null) {
+            echo '<form method="post" action="/favorite_toggle.php" class="favorite-form" data-post-id="' . $postId . '">';
+            echo '<input type="hidden" name="post_id" value="' . $postId . '">';
+            echo '<button type="submit" class="btn btn-sm ' . $favClass . '" title="' . e($favTitle) . '">';
+            echo '<span class="favorite-icon">' . $favIcon . '</span>';
+            echo '<span class="favorite-text ms-1">' . e($favTitle) . '</span>';
+            echo '</button>';
+            echo '</form>';
+        }
         echo '<a class="btn btn-sm btn-outline-secondary" href="/post.php?id=' . e((string)$post['id']) . '">查看</a>';
         echo '</div>';
         echo '</div>';
@@ -422,6 +452,14 @@ echo '</div>';
 echo '</div>';
 echo '</div>';
 
+echo '<style>';
+echo '.btn-favorite{color:#ffc107;border-color:#ffc107;background:transparent;transition:all .2s;}';
+echo '.btn-favorite:hover{background:#fff3cd;border-color:#ffc107;color:#ffc107;}';
+echo '.btn-favorite.active{background:#ffc107;border-color:#ffc107;color:#fff;}';
+echo '.btn-favorite.active:hover{background:#ffb300;border-color:#ffb300;color:#fff;}';
+echo '.favorite-icon{font-size:1rem;line-height:1;}';
+echo '</style>';
+
 echo '<script>';
 echo 'function removeFilter(name) {';
 echo '  const params = new URLSearchParams(window.location.search);';
@@ -431,6 +469,67 @@ echo '  const query = params.toString();';
 echo '  window.location.href = "/index.php" + (query ? "?" + query : "");';
 echo '}';
 echo 'function resetFilters() { window.location.href = "/index.php"; }';
+
+echo '(function() {';
+echo '  function showToast(msg) {';
+echo '    var toast = document.createElement("div");';
+echo '    toast.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);background:rgba(0,0,0,.8);color:#fff;padding:12px 24px;border-radius:8px;font-size:.9rem;z-index:9999;opacity:0;transition:all .3s ease;pointer-events:none;";';
+echo '    toast.textContent = msg;';
+echo '    document.body.appendChild(toast);';
+echo '    setTimeout(function() { toast.style.opacity = "1"; toast.style.transform = "translate(-50%,-50%) scale(1)"; }, 10);';
+echo '    setTimeout(function() {';
+echo '      toast.style.opacity = "0";';
+echo '      toast.style.transform = "translate(-50%,-50%) scale(.9)";';
+echo '      setTimeout(function() { toast.remove(); }, 300);';
+echo '    }, 2000);';
+echo '  }';
+
+echo '  var favoriteForms = document.querySelectorAll(".favorite-form");';
+echo '  for (var i = 0; i < favoriteForms.length; i++) {';
+echo '    (function(form) {';
+echo '      form.addEventListener("submit", function(e) {';
+echo '        e.preventDefault();';
+echo '        var postId = form.getAttribute("data-post-id");';
+echo '        var btn = form.querySelector("button[type=submit]");';
+echo '        var icon = form.querySelector(".favorite-icon");';
+echo '        var text = form.querySelector(".favorite-text");';
+echo '        if (!btn || btn.disabled) return;';
+echo '        btn.disabled = true;';
+echo '        var formData = new FormData(form);';
+echo '        var xhr = new XMLHttpRequest();';
+echo '        xhr.open("POST", "/favorite_toggle.php", true);';
+echo '        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");';
+echo '        xhr.onload = function() {';
+echo '          btn.disabled = false;';
+echo '          try {';
+echo '            var data = JSON.parse(xhr.responseText);';
+echo '            if (data.success) {';
+echo '              if (data.favorited) {';
+echo '                btn.classList.add("active");';
+echo '                if (icon) icon.textContent = "★";';
+echo '                if (text) text.textContent = "取消收藏";';
+echo '                btn.setAttribute("title", "取消收藏");';
+echo '              } else {';
+echo '                btn.classList.remove("active");';
+echo '                if (icon) icon.textContent = "☆";';
+echo '                if (text) text.textContent = "收藏";';
+echo '                btn.setAttribute("title", "收藏");';
+echo '              }';
+echo '              showToast(data.message);';
+echo '            }';
+echo '          } catch (err) {';
+echo '            console.error("收藏操作失败", err);';
+echo '          }';
+echo '        };';
+echo '        xhr.onerror = function() {';
+echo '          btn.disabled = false;';
+echo '          console.error("网络错误");';
+echo '        };';
+echo '        xhr.send(formData);';
+echo '      });';
+echo '    })(favoriteForms[i]);';
+echo '  }';
+echo '})();';
 echo '</script>';
 
 render_footer();

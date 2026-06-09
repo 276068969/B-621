@@ -48,3 +48,17 @@ CREATE TABLE IF NOT EXISTS rate_limit_logs (
   KEY idx_rate_limit_action_time (action, create_time),
   KEY idx_rate_limit_ip (ip)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS favorites (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  post_id INT UNSIGNED NOT NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_favorites_user_post (user_id, post_id),
+  KEY idx_favorites_user_id (user_id),
+  KEY idx_favorites_post_id (post_id),
+  KEY idx_favorites_create_time (create_time),
+  CONSTRAINT fk_favorites_user_id FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_favorites_post_id FOREIGN KEY (post_id) REFERENCES posts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

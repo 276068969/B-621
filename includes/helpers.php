@@ -195,3 +195,64 @@ function get_hot_posts(PDO $pdo, int $limit = 10, int $excludeId = 0): array
     return $stmt->fetchAll();
 }
 
+function is_post_favorited(PDO $pdo, int $userId, int $postId): bool
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM favorites WHERE user_id = ? AND post_id = ?');
+    $stmt->execute([$userId, $postId]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+function toggle_favorite(PDO $pdo, int $userId, int $postId): array
+{
+    $stmt = $pdo->prepare('SELECT id FROM favorites WHERE user_id = ? AND post_id = ? LIMIT 1');
+    $stmt->execute([$userId, $postId]);
+    $existing = $stmt->fetch();
+
+    if ($existing) {
+        $stmt = $pdo->prepare('DELETE FROM favorites WHERE user_id = ? AND post_id = ?');
+        $stmt->execute([$userId, $postId]);
+        return ['favorited' => false, 'action' => 'unfavorited'];
+    } else {
+        $stmt = $pdo->prepare('INSERT INTO favorites (user_id, post_id) VALUES (?, ?)');
+        $stmt->execute([$userId, $postId]);
+        return ['favorited' => true, 'action' => 'favorited'];
+    }
+}
+
+function get_user_favorites(PDO $pdo, int $userId, int $page, int $pageSize): array
+{
+    $offset = ($page - 1) * $pageSize;
+
+    $sql = 'SELECT f.id AS favorite_id, f.create_time AS favorite_time,
+                   p.id, p.title, p.content, p.create_time, p.update_time, p.status,
+                   u.username,
+                   COALESCE(c.cnt, 0) AS comment_count
+            FROM favorites f
+            JOIN posts p ON p.id = f.post_id
+            JOIN users u ON u.id = p.user_id
+            LEFT JOIN (
+                SELECT post_id, COUNT(*) AS cnt
+                FROM comments
+                WHERE status = 1
+                GROUP BY post_id
+            ) c ON c.post_id = p.id
+            WHERE f.user_id = ?
+            ORDER BY f.create_time DESC
+            LIMIT ? OFFSET ?';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $pageSize, PDO::PARAM_INT);
+    $stmt->bindValue(3, $offset, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function get_user_favorite_count(PDO $pdo, int $userId): int
+{
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM favorites WHERE user_id = ?');
+    $stmt->execute([$userId]);
+    return (int)$stmt->fetchColumn();
+}
+
