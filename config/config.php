@@ -41,5 +41,27 @@ return [
             : true,
         'sensitive_words' => [],
     ],
+    'rate_limit' => [
+        'login' => [
+            'ip_max' => (int)(getenv('RATE_LIMIT_LOGIN_IP_MAX') ?: 10),
+            'ip_window' => (int)(getenv('RATE_LIMIT_LOGIN_IP_WINDOW') ?: 60),
+            'account_max' => (int)(getenv('RATE_LIMIT_LOGIN_ACCOUNT_MAX') ?: 5),
+            'account_window' => (int)(getenv('RATE_LIMIT_LOGIN_ACCOUNT_WINDOW') ?: 600),
+        ],
+        'admin_login' => [
+            'ip_max' => (int)(getenv('RATE_LIMIT_ADMIN_IP_MAX') ?: 5),
+            'ip_window' => (int)(getenv('RATE_LIMIT_ADMIN_IP_WINDOW') ?: 60),
+            'account_max' => (int)(getenv('RATE_LIMIT_ADMIN_ACCOUNT_MAX') ?: 3),
+            'account_window' => (int)(getenv('RATE_LIMIT_ADMIN_ACCOUNT_WINDOW') ?: 600),
+        ],
+        'captcha_store' => [
+            'ip_max' => (int)(getenv('RATE_LIMIT_CAPTCHA_IP_MAX') ?: 30),
+            'ip_window' => (int)(getenv('RATE_LIMIT_CAPTCHA_IP_WINDOW') ?: 60),
+        ],
+        'check_username' => [
+            'ip_max' => (int)(getenv('RATE_LIMIT_CHECK_USERNAME_IP_MAX') ?: 20),
+            'ip_window' => (int)(getenv('RATE_LIMIT_CHECK_USERNAME_IP_WINDOW') ?: 60),
+        ],
+    ],
 ];
 

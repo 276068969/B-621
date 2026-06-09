@@ -36,3 +36,15 @@ CREATE TABLE IF NOT EXISTS comments (
   CONSTRAINT fk_comments_post_id FOREIGN KEY (post_id) REFERENCES posts(id),
   CONSTRAINT fk_comments_user_id FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rate_limit_logs (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  action VARCHAR(64) NOT NULL,
+  req_key VARCHAR(255) NOT NULL,
+  ip VARCHAR(45) NOT NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_rate_limit_action_key (action, req_key),
+  KEY idx_rate_limit_action_time (action, create_time),
+  KEY idx_rate_limit_ip (ip)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

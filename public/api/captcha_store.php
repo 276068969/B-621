@@ -11,6 +11,24 @@ require_once __DIR__ . '/../../includes/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+try {
+    $pdo = db($config);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'message' => 'server_error']);
+    exit;
+}
+
+$rlConfig = $config['rate_limit']['captcha_store'];
+$limiter = new RateLimiter($pdo, 'captcha_store_ip', $rlConfig['ip_max'], $rlConfig['ip_window']);
+if ($limiter->isLimited()) {
+    $retryAfter = $limiter->getRetryAfterSeconds();
+    http_response_code(429);
+    echo json_encode(['ok' => false, 'message' => 'rate_limited', 'retry_after' => $retryAfter]);
+    exit;
+}
+$limiter->increment();
+
 $code = trim((string)($_POST['code'] ?? ''));
 if (!preg_match('/^\d{4}$/', $code)) {
     http_response_code(400);

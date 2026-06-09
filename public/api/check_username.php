@@ -19,6 +19,23 @@ if ($username === '' || !is_valid_username($username)) {
 
 try {
     $pdo = db($config);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'message' => 'server_error']);
+    exit;
+}
+
+$rlConfig = $config['rate_limit']['check_username'];
+$limiter = new RateLimiter($pdo, 'check_username_ip', $rlConfig['ip_max'], $rlConfig['ip_window']);
+if ($limiter->isLimited()) {
+    $retryAfter = $limiter->getRetryAfterSeconds();
+    http_response_code(429);
+    echo json_encode(['ok' => false, 'message' => 'rate_limited', 'retry_after' => $retryAfter]);
+    exit;
+}
+$limiter->increment();
+
+try {
     $stmt = $pdo->prepare('SELECT 1 FROM users WHERE username = ? LIMIT 1');
     $stmt->execute([$username]);
     $exists = (bool)$stmt->fetchColumn();

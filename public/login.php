@@ -38,13 +38,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $return = '/index.php';
     }
 
+    $rlConfig = $config['rate_limit']['login'];
+    $ipLimiter = new RateLimiter($pdo, 'login_ip', $rlConfig['ip_max'], $rlConfig['ip_window']);
+    $accountLimiter = new RateLimiter($pdo, 'login_account', $rlConfig['account_max'], $rlConfig['account_window']);
+
+    if ($ipLimiter->isLimited()) {
+        $retryAfter = $ipLimiter->getRetryAfterSeconds();
+        $errors['form'] = '登录过于频繁，请 ' . $retryAfter . ' 秒后再试。';
+    } elseif ($username !== '' && $accountLimiter->isLimitedByIdentifier('user:' . $username)) {
+        $retryAfter = $accountLimiter->getRetryAfterSecondsByIdentifier('user:' . $username);
+        $errors['form'] = '该账号登录失败次数过多，请 ' . $retryAfter . ' 秒后再试。';
+    }
+
     if ($username === '' || $password === '') {
-        $errors['form'] = '请输入用户名和密码。';
-    } else {
+        if (!isset($errors['form'])) {
+            $errors['form'] = '请输入用户名和密码。';
+        }
+    } elseif (!isset($errors['form'])) {
+        $ipLimiter->increment();
         $stmt = $pdo->prepare('SELECT id, username, password, status FROM users WHERE username = ? LIMIT 1');
         $stmt->execute([$username]);
         $row = $stmt->fetch();
         if (!$row || (int)$row['status'] !== 1 || !password_verify($password, (string)$row['password'])) {
+            $accountLimiter->incrementByIdentifier('user:' . $username);
             $errors['form'] = '用户名或密码错误。';
         } else {
             login_user((int)$row['id'], (string)$row['username']);

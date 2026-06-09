@@ -19,4 +19,5 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/admin_auth.php';
 require_once __DIR__ . '/layout.php';
 require_once __DIR__ . '/content_moderation.php';
+require_once __DIR__ . '/rate_limit.php';
 

@@ -12,6 +12,15 @@ if (admin_is_logged_in()) {
     redirect('/admin/index.php');
 }
 
+try {
+    $pdo = db($config);
+} catch (Throwable $e) {
+    render_header($config, ['title' => '后台登录 - Lite Forum', 'active' => 'admin']);
+    echo '<div class="card card-lite p-4">数据库连接失败</div>';
+    render_footer();
+    exit;
+}
+
 $errors = [];
 $username = '';
 
@@ -19,15 +28,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim((string)($_POST['username'] ?? ''));
     $password = (string)($_POST['password'] ?? '');
 
+    $rlConfig = $config['rate_limit']['admin_login'];
+    $ipLimiter = new RateLimiter($pdo, 'admin_login_ip', $rlConfig['ip_max'], $rlConfig['ip_window']);
+    $accountLimiter = new RateLimiter($pdo, 'admin_login_account', $rlConfig['account_max'], $rlConfig['account_window']);
+
+    if ($ipLimiter->isLimited()) {
+        $retryAfter = $ipLimiter->getRetryAfterSeconds();
+        $errors['form'] = '登录过于频繁，请 ' . $retryAfter . ' 秒后再试。';
+    } elseif ($username !== '' && $accountLimiter->isLimitedByIdentifier('admin:' . $username)) {
+        $retryAfter = $accountLimiter->getRetryAfterSecondsByIdentifier('admin:' . $username);
+        $errors['form'] = '该管理员账号登录失败次数过多，请 ' . $retryAfter . ' 秒后再试。';
+    }
+
     if ($username === '' || $password === '') {
-        $errors['form'] = '请输入管理员账号和密码。';
-    } else {
+        if (!isset($errors['form'])) {
+            $errors['form'] = '请输入管理员账号和密码。';
+        }
+    } elseif (!isset($errors['form'])) {
+        $ipLimiter->increment();
         $admin = $config['admin'];
         if ($username === (string)$admin['username'] && $password === (string)$admin['password']) {
             admin_login();
             flash_set('success', '后台登录成功。');
             redirect('/admin/index.php');
         }
+        $accountLimiter->incrementByIdentifier('admin:' . $username);
         $errors['form'] = '账号或密码错误。';
     }
 }
