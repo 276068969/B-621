@@ -24,6 +24,7 @@ require_once __DIR__ . '/admin_auth.php';
 require_once __DIR__ . '/layout.php';
 require_once __DIR__ . '/content_moderation.php';
 require_once __DIR__ . '/rate_limit.php';
+require_once __DIR__ . '/anti_spam.php';
 
 if (!empty($config['app']['trusted_proxies'])) {
     RateLimiter::setTrustedProxies($config['app']['trusted_proxies']);

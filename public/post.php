@@ -42,6 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $u = user();
+    $spamResult = anti_spam_check_comment($pdo, (int)$u['id'], $content);
+    if (!$spamResult['passed']) {
+        flash_set('danger', $spamResult['message']);
+        redirect('/post.php?id=' . $id);
+    }
+
     $stmt = $pdo->prepare('INSERT INTO comments (post_id, user_id, content, status) VALUES (?, ?, ?, 1)');
     $stmt->execute([$id, (int)$u['id'], $content]);
     flash_set('success', '评论已发布。');

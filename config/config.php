@@ -65,5 +65,22 @@ return [
             'ip_window' => (int)(getenv('RATE_LIMIT_CHECK_USERNAME_IP_WINDOW') ?: 60),
         ],
     ],
+    'anti_spam' => [
+        'enabled' => (getenv('ANTI_SPAM_ENABLED') !== false)
+            ? in_array(strtolower(getenv('ANTI_SPAM_ENABLED')), ['1', 'true', 'yes', 'on'], true)
+            : true,
+        'post' => [
+            'min_interval_seconds' => (int)(getenv('ANTI_SPAM_POST_MIN_INTERVAL') ?: 60),
+            'similarity_threshold' => (float)(getenv('ANTI_SPAM_POST_SIMILARITY') ?: 0.85),
+            'similarity_check_count' => (int)(getenv('ANTI_SPAM_POST_SIMILARITY_COUNT') ?: 3),
+            'min_content_length' => (int)(getenv('ANTI_SPAM_POST_MIN_LENGTH') ?: 10),
+        ],
+        'comment' => [
+            'min_interval_seconds' => (int)(getenv('ANTI_SPAM_COMMENT_MIN_INTERVAL') ?: 30),
+            'similarity_threshold' => (float)(getenv('ANTI_SPAM_COMMENT_SIMILARITY') ?: 0.9),
+            'similarity_check_count' => (int)(getenv('ANTI_SPAM_COMMENT_SIMILARITY_COUNT') ?: 5),
+            'min_content_length' => (int)(getenv('ANTI_SPAM_COMMENT_MIN_LENGTH') ?: 2),
+        ],
+    ],
 ];
 

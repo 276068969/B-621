@@ -50,6 +50,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $u = user();
+        $spamResult = anti_spam_check_post($pdo, (int)$u['id'], $title, $content);
+        if (!$spamResult['passed']) {
+            if ($spamResult['reason'] === 'meaningless') {
+                $errors['content'] = $spamResult['message'];
+            } elseif ($spamResult['reason'] === 'time_interval') {
+                $errors['content'] = $spamResult['message'];
+            } elseif ($spamResult['reason'] === 'similarity') {
+                $errors['content'] = $spamResult['message'];
+            } else {
+                $errors['content'] = $spamResult['message'];
+            }
+        }
+    }
+
+    if (!$errors) {
+        $u = user();
         $stmt = $pdo->prepare('INSERT INTO posts (user_id, title, content, status) VALUES (?, ?, ?, 1)');
         $stmt->execute([(int)$u['id'], $title, $content]);
         $postId = (int)$pdo->lastInsertId();
