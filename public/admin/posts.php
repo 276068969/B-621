@@ -26,34 +26,96 @@ if (!in_array($status, ['all', 'active', 'deleted'], true)) {
     $status = 'all';
 }
 
+$keyword = isset($_GET['keyword']) ? trim((string)$_GET['keyword']) : '';
+$searchIn = isset($_GET['search_in']) ? trim((string)$_GET['search_in']) : 'all';
+if (!in_array($searchIn, ['all', 'title', 'content'], true)) {
+    $searchIn = 'all';
+}
+
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $pageSize = 10;
 
 $whereSql = '';
-$countSql = 'SELECT COUNT(*) FROM posts';
+$whereConditions = [];
+$params = [];
+
 if ($status === 'active') {
-    $whereSql = ' WHERE p.status = 1';
-    $countSql = 'SELECT COUNT(*) FROM posts WHERE status = 1';
+    $whereConditions[] = 'p.status = 1';
 } elseif ($status === 'deleted') {
-    $whereSql = ' WHERE p.status = 0';
-    $countSql = 'SELECT COUNT(*) FROM posts WHERE status = 0';
+    $whereConditions[] = 'p.status = 0';
 }
 
-$totalAll = (int)$pdo->query('SELECT COUNT(*) FROM posts')->fetchColumn();
-$totalActive = (int)$pdo->query('SELECT COUNT(*) FROM posts WHERE status = 1')->fetchColumn();
+if ($keyword !== '') {
+    $searchConditions = [];
+    if ($searchIn === 'all' || $searchIn === 'title') {
+        $searchConditions[] = 'p.title LIKE :keyword_title';
+        $params[':keyword_title'] = '%' . $keyword . '%';
+    }
+    if ($searchIn === 'all' || $searchIn === 'content') {
+        $searchConditions[] = 'p.content LIKE :keyword_content';
+        $params[':keyword_content'] = '%' . $keyword . '%';
+    }
+    if ($searchConditions) {
+        $whereConditions[] = '(' . implode(' OR ', $searchConditions) . ')';
+    }
+}
+
+if ($whereConditions) {
+    $whereSql = ' WHERE ' . implode(' AND ', $whereConditions);
+}
+
+$countWhereSql = '';
+$countParams = [];
+if ($status === 'active') {
+    $countWhereSql = ' WHERE status = 1';
+} elseif ($status === 'deleted') {
+    $countWhereSql = ' WHERE status = 0';
+}
+
+$countAllSql = 'SELECT COUNT(*) FROM posts';
+$countActiveSql = 'SELECT COUNT(*) FROM posts WHERE status = 1';
+
+$totalAll = (int)$pdo->query($countAllSql)->fetchColumn();
+$totalActive = (int)$pdo->query($countActiveSql)->fetchColumn();
 $totalDeleted = $totalAll - $totalActive;
 
-$total = (int)$pdo->query($countSql)->fetchColumn();
+$filteredCountSql = 'SELECT COUNT(*) FROM posts p JOIN users u ON u.id = p.user_id' . $whereSql;
+$countStmt = $pdo->prepare($filteredCountSql);
+foreach ($params as $key => $value) {
+    $countStmt->bindValue($key, $value);
+}
+$countStmt->execute();
+$total = (int)$countStmt->fetchColumn();
+
 $pg = paginate($total, $page, $pageSize);
 
+$scoreFields = '';
+$orderSql = 'ORDER BY p.create_time DESC';
+if ($keyword !== '') {
+    $scoreParts = [];
+    if ($searchIn === 'all' || $searchIn === 'title') {
+        $scoreParts[] = 'CASE WHEN p.title LIKE :keyword_title THEN 1 ELSE 0 END * 10';
+    }
+    if ($searchIn === 'all' || $searchIn === 'content') {
+        $scoreParts[] = 'CASE WHEN p.content LIKE :keyword_content THEN 1 ELSE 0 END * 3';
+    }
+    if ($scoreParts) {
+        $scoreFields = ', (' . implode(' + ', $scoreParts) . ') AS search_score';
+        $orderSql = 'ORDER BY search_score DESC, p.create_time DESC';
+    }
+}
+
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.title, p.create_time, p.update_time, p.status, u.username
+    'SELECT p.id, p.title, p.content, p.create_time, p.update_time, p.status, u.username' . $scoreFields . '
      FROM posts p
      JOIN users u ON u.id = p.user_id'
     . $whereSql .
-    ' ORDER BY p.create_time DESC
+    ' ' . $orderSql . '
      LIMIT :limit OFFSET :offset'
 );
+foreach ($params as $key => $value) {
+    $stmt->bindValue($key, $value);
+}
 $stmt->bindValue(':limit', $pg['pageSize'], PDO::PARAM_INT);
 $stmt->bindValue(':offset', $pg['offset'], PDO::PARAM_INT);
 $stmt->execute();
@@ -64,11 +126,51 @@ render_header($config, ['title' => '帖子管理 - Lite Forum', 'active' => 'pos
 echo '<div class="d-flex align-items-center justify-content-between mb-3">';
 echo '<div>';
 echo '<h1 class="h4 mb-0">帖子管理</h1>';
-echo '<div class="text-muted small mt-1">共 ' . e((string)$total) . ' 条' . ($status === 'all' ? '（含已删除）' : '') . '</div>';
+echo '<div class="text-muted small mt-1">共 ' . e((string)$total) . ' 条' . ($status === 'all' ? '（含已删除）' : '') . ($keyword ? ' · 搜索：' . e($keyword) : '') . '</div>';
 echo '</div>';
 echo '<div class="d-flex gap-2">';
 echo '<a class="btn btn-outline-secondary" href="/admin/index.php">返回概览</a>';
 echo '<a class="btn btn-outline-secondary" href="/admin/logout.php">退出后台</a>';
+echo '</div>';
+echo '</div>';
+
+echo '<div class="card card-lite mb-3">';
+echo '<div class="card-body p-3">';
+echo '<form method="get" action="/admin/posts.php" id="searchForm">';
+echo '<input type="hidden" name="status" value="' . e($status) . '">';
+echo '<div class="row g-3 align-items-end">';
+echo '<div class="col-md-6 col-12">';
+echo '<label class="form-label small fw-medium mb-1" for="keyword">关键词搜索</label>';
+echo '<div class="input-group">';
+echo '<span class="input-group-text" style="background:#f8f9fa;">';
+echo '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>';
+echo '</span>';
+echo '<input type="text" class="form-control" id="keyword" name="keyword" placeholder="输入关键词搜索帖子..." value="' . e($keyword) . '">';
+echo '<button type="submit" class="btn btn-primary">搜索</button>';
+if ($keyword) {
+    echo '<a href="/admin/posts.php?status=' . e($status) . '" class="btn btn-outline-secondary">清除</a>';
+}
+echo '</div>';
+echo '</div>';
+echo '<div class="col-md-6 col-12">';
+echo '<label class="form-label small fw-medium mb-1">搜索范围</label>';
+echo '<div class="d-flex gap-3">';
+$searchInOptions = [
+    'all' => '标题+正文',
+    'title' => '仅标题',
+    'content' => '仅正文',
+];
+foreach ($searchInOptions as $val => $label) {
+    $checked = $searchIn === $val ? ' checked' : '';
+    echo '<div class="form-check form-check-inline mb-0">';
+    echo '<input class="form-check-input" type="radio" name="search_in" id="search_in_' . e($val) . '" value="' . e($val) . '"' . $checked . ' onchange="document.getElementById(\'searchForm\').submit()">';
+    echo '<label class="form-check-label small" for="search_in_' . e($val) . '">' . e($label) . '</label>';
+    echo '</div>';
+}
+echo '</div>';
+echo '</div>';
+echo '</div>';
+echo '</form>';
 echo '</div>';
 echo '</div>';
 
@@ -78,10 +180,82 @@ $tabs = [
     'active' => ['label' => '正常', 'count' => $totalActive],
     'deleted' => ['label' => '回收站', 'count' => $totalDeleted],
 ];
+
+function build_admin_search_params(string $status, string $keyword, string $searchIn): string
+{
+    $params = [];
+    $params['status'] = $status;
+    if ($keyword !== '') {
+        $params['keyword'] = $keyword;
+        $params['search_in'] = $searchIn;
+    }
+    return '?' . http_build_query($params);
+}
+
+function admin_highlight_keyword(string $text, string $keyword): string
+{
+    if ($keyword === '') {
+        return e($text);
+    }
+    $safeText = e($text);
+    $safeKeyword = preg_quote(e($keyword), '/');
+    $result = preg_replace('/(' . $safeKeyword . ')/iu', '<mark style="background:#fff3cd;color:#856404;padding:0 2px;border-radius:2px;font-weight:500;">$1</mark>', $safeText);
+    return $result !== null ? $result : $safeText;
+}
+
+function admin_get_excerpt(string $content, string $keyword, int $length = 80): string
+{
+    $plainText = strip_tags($content);
+    if ($keyword === '') {
+        if (function_exists('mb_substr')) {
+            $excerpt = mb_substr($plainText, 0, $length);
+        } else {
+            $excerpt = substr($plainText, 0, $length);
+        }
+        if (strlen($plainText) > strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLower = mb_strtolower($keyword);
+    $textLower = mb_strtolower($plainText);
+    $pos = mb_strpos($textLower, $keywordLower);
+
+    if ($pos === false) {
+        if (function_exists('mb_substr')) {
+            $excerpt = mb_substr($plainText, 0, $length);
+        } else {
+            $excerpt = substr($plainText, 0, $length);
+        }
+        if (strlen($plainText) > strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLen = mb_strlen($keyword);
+    $halfLength = (int)floor(($length - $keywordLen) / 2);
+    $start = max(0, $pos - $halfLength);
+    $end = min(mb_strlen($plainText), $pos + $keywordLen + $halfLength);
+
+    if (function_exists('mb_substr')) {
+        $excerpt = mb_substr($plainText, $start, $end - $start);
+    } else {
+        $excerpt = substr($plainText, $start, $end - $start);
+    }
+
+    $prefix = $start > 0 ? '...' : '';
+    $suffix = $end < mb_strlen($plainText) ? '...' : '';
+
+    return $prefix . $excerpt . $suffix;
+}
+
 foreach ($tabs as $key => $tab) {
     $active = $status === $key ? ' active' : '';
+    $url = build_admin_search_params($key, $keyword, $searchIn);
     echo '<li class="nav-item">';
-    echo '<a class="nav-link' . $active . '" href="/admin/posts.php?status=' . e($key) . '">';
+    echo '<a class="nav-link' . $active . '" href="/admin/posts.php' . e($url) . '">';
     echo e($tab['label']) . ' <span class="badge bg-secondary rounded-pill">' . e((string)$tab['count']) . '</span>';
     echo '</a></li>';
 }
@@ -96,14 +270,48 @@ echo '<th class="ps-3">标题</th><th>作者</th><th>发布时间</th><th>更新
 echo '</tr></thead><tbody>';
 
 if (!$rows) {
-    echo '<tr><td class="ps-3 py-4 text-muted" colspan="6">暂无数据</td></tr>';
+    echo '<tr><td class="ps-3 py-4 text-muted" colspan="6">';
+    if ($keyword) {
+        echo '没有找到匹配的帖子';
+    } else {
+        echo '暂无数据';
+    }
+    echo '</td></tr>';
 } else {
     foreach ($rows as $r) {
         $statusBadge = ((int)$r['status'] === 1)
             ? '<span class="badge text-bg-success">正常</span>'
             : '<span class="badge text-bg-secondary">已删除</span>';
+
+        $titleDisplay = admin_highlight_keyword((string)$r['title'], $keyword);
+        $excerpt = admin_get_excerpt((string)$r['content'], $keyword, 100);
+        $excerptDisplay = admin_highlight_keyword($excerpt, $keyword);
+
+        $titleMatch = false;
+        $contentMatch = false;
+        if ($keyword !== '') {
+            $keywordLower = mb_strtolower($keyword);
+            $titleLower = mb_strtolower((string)$r['title']);
+            $contentLower = mb_strtolower(strip_tags((string)$r['content']));
+            $titleMatch = mb_strpos($titleLower, $keywordLower) !== false;
+            $contentMatch = mb_strpos($contentLower, $keywordLower) !== false;
+        }
+
         echo '<tr>'; 
-        echo '<td class="ps-3">' . e((string)$r['title']) . '</td>';
+        echo '<td class="ps-3">';
+        echo '<div class="fw-medium">' . $titleDisplay . '</div>';
+        if ($keyword) {
+            echo '<div class="small text-muted mt-1">' . $excerptDisplay . '</div>';
+            echo '<div class="d-flex gap-2 mt-1">';
+            if ($titleMatch) {
+                echo '<span class="badge text-bg-info" style="font-size:.65rem;">标题命中</span>';
+            }
+            if ($contentMatch) {
+                echo '<span class="badge text-bg-purple" style="background:#7048e8;font-size:.65rem;">正文命中</span>';
+            }
+            echo '</div>';
+        }
+        echo '</td>';
         echo '<td>' . e((string)$r['username']) . '</td>';
         echo '<td class="text-muted small">' . e((string)$r['create_time']) . '</td>';
         echo '<td class="text-muted small">' . (!empty($r['update_time']) ? e((string)$r['update_time']) : '-') . '</td>';
@@ -132,7 +340,8 @@ if ($pg['pages'] > 1) {
     echo '<ul class="pagination justify-content-center">';
     for ($i = 1; $i <= $pg['pages']; $i++) {
         $active = $i === $pg['page'] ? ' active' : '';
-        echo '<li class="page-item' . $active . '"><a class="page-link" href="/admin/posts.php?status=' . e($status) . '&page=' . e((string)$i) . '">' . e((string)$i) . '</a></li>';
+        $pageUrl = build_admin_search_params($status, $keyword, $searchIn) . '&page=' . $i;
+        echo '<li class="page-item' . $active . '"><a class="page-link" href="/admin/posts.php' . e($pageUrl) . '">' . e((string)$i) . '</a></li>';
     }
     echo '</ul></nav>';
 }

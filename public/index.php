@@ -27,6 +27,10 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $pageSize = 10;
 
 $keyword = isset($_GET['keyword']) ? trim((string)$_GET['keyword']) : '';
+$searchIn = isset($_GET['search_in']) ? trim((string)$_GET['search_in']) : 'all';
+if (!in_array($searchIn, ['all', 'title', 'content'], true)) {
+    $searchIn = 'all';
+}
 $author = isset($_GET['author']) ? trim((string)$_GET['author']) : '';
 $commentMin = isset($_GET['comment_min']) ? (int)$_GET['comment_min'] : 0;
 $commentMax = isset($_GET['comment_max']) ? (int)$_GET['comment_max'] : 0;
@@ -40,8 +44,18 @@ $whereConditions = ['p.status = 1'];
 $params = [];
 
 if ($keyword !== '') {
-    $whereConditions[] = 'p.title LIKE :keyword';
-    $params[':keyword'] = '%' . $keyword . '%';
+    $searchConditions = [];
+    if ($searchIn === 'all' || $searchIn === 'title') {
+        $searchConditions[] = 'p.title LIKE :keyword_title';
+        $params[':keyword_title'] = '%' . $keyword . '%';
+    }
+    if ($searchIn === 'all' || $searchIn === 'content') {
+        $searchConditions[] = 'p.content LIKE :keyword_content';
+        $params[':keyword_content'] = '%' . $keyword . '%';
+    }
+    if ($searchConditions) {
+        $whereConditions[] = '(' . implode(' OR ', $searchConditions) . ')';
+    }
 }
 
 if ($author !== '') {
@@ -76,6 +90,7 @@ $orderSql = match($sort) {
     'time_asc' => 'ORDER BY p.create_time ASC',
     'comment_desc' => 'ORDER BY comment_count DESC',
     'comment_asc' => 'ORDER BY comment_count ASC',
+    'relevance' => $keyword !== '' ? 'ORDER BY search_score DESC, p.create_time DESC' : 'ORDER BY p.create_time DESC',
     default => 'ORDER BY p.create_time DESC',
 };
 
@@ -102,8 +117,22 @@ $total = (int)$totalStmt->fetchColumn();
 
 $pg = paginate($total, $page, $pageSize);
 
+$scoreFields = '';
+if ($keyword !== '') {
+    $scoreParts = [];
+    if ($searchIn === 'all' || $searchIn === 'title') {
+        $scoreParts[] = 'CASE WHEN p.title LIKE :keyword_title THEN 1 ELSE 0 END * 10';
+    }
+    if ($searchIn === 'all' || $searchIn === 'content') {
+        $scoreParts[] = 'CASE WHEN p.content LIKE :keyword_content THEN 1 ELSE 0 END * 3';
+    }
+    if ($scoreParts) {
+        $scoreFields = ', (' . implode(' + ', $scoreParts) . ') AS search_score';
+    }
+}
+
 $listSql = 'SELECT p.id, p.title, p.content, p.create_time, p.update_time, u.username,
-            COALESCE(c.cnt, 0) AS comment_count
+            COALESCE(c.cnt, 0) AS comment_count' . $scoreFields . '
      FROM posts p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN (
@@ -162,6 +191,65 @@ function build_query_string(array $overrides = []): string
     return '?' . http_build_query($params);
 }
 
+function highlight_keyword(string $text, string $keyword): string
+{
+    if ($keyword === '') {
+        return e($text);
+    }
+    $safeText = e($text);
+    $safeKeyword = preg_quote(e($keyword), '/');
+    $result = preg_replace('/(' . $safeKeyword . ')/iu', '<mark class="search-highlight">$1</mark>', $safeText);
+    return $result !== null ? $result : $safeText;
+}
+
+function get_context_excerpt(string $content, string $keyword, int $length = 120): string
+{
+    $plainText = strip_tags(sanitize_rich_html($content));
+    if ($keyword === '') {
+        if (function_exists('mb_substr')) {
+            $excerpt = mb_substr($plainText, 0, $length);
+        } else {
+            $excerpt = substr($plainText, 0, $length);
+        }
+        if (strlen($plainText) > strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLower = mb_strtolower($keyword);
+    $textLower = mb_strtolower($plainText);
+    $pos = mb_strpos($textLower, $keywordLower);
+
+    if ($pos === false) {
+        if (function_exists('mb_substr')) {
+            $excerpt = mb_substr($plainText, 0, $length);
+        } else {
+            $excerpt = substr($plainText, 0, $length);
+        }
+        if (strlen($plainText) > strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLen = mb_strlen($keyword);
+    $halfLength = (int)floor(($length - $keywordLen) / 2);
+    $start = max(0, $pos - $halfLength);
+    $end = min(mb_strlen($plainText), $pos + $keywordLen + $halfLength);
+
+    if (function_exists('mb_substr')) {
+        $excerpt = mb_substr($plainText, $start, $end - $start);
+    } else {
+        $excerpt = substr($plainText, $start, $end - $start);
+    }
+
+    $prefix = $start > 0 ? '...' : '';
+    $suffix = $end < mb_strlen($plainText) ? '...' : '';
+
+    return $prefix . $excerpt . $suffix;
+}
+
 render_header($config, ['title' => '帖子列表 - Lite Forum', 'active' => 'home']);
 
 echo '<style>';
@@ -183,6 +271,10 @@ echo '.hot-rank-title{display:block;color:#212529;font-size:.9rem;font-weight:50
 echo '.hot-rank-title:hover{color:#228be6;}';
 echo '.hot-rank-meta{margin-top:.35rem;display:flex;align-items:center;}';
 echo '.hot-comment-badge{font-size:.75rem;color:#495057;background:#e9ecef;padding:.15rem .5rem;border-radius:1rem;}';
+echo '.search-highlight{background:#fff3cd;color:#856404;padding:0 2px;border-radius:2px;font-weight:500;}';
+echo '.search-match-badge{display:inline-flex;align-items:center;gap:.25rem;padding:.2rem .5rem;font-size:.7rem;border-radius:.25rem;}';
+echo '.search-match-badge.title-match{background:#e7f5ff;color:#1971c2;}';
+echo '.search-match-badge.content-match{background:#f3f0ff;color:#7048e8;}';
 echo '@media (max-width: 768px){';
 echo '  .filter-toggle-btn{display:inline-flex;align-items:center;gap:.35rem;}';
 echo '  .filter-panel{display:none;}';
@@ -228,12 +320,26 @@ echo '<form method="get" action="/index.php" id="filterForm">';
 echo '<div class="row g-3 filter-row">';
 
 echo '<div class="col-md-4 col-12">';
-echo '<label class="filter-label" for="keyword">标题关键词</label>';
+echo '<label class="filter-label" for="keyword">关键词搜索</label>';
 echo '<div class="input-group">';
 echo '<span class="input-group-text" style="background:#f8f9fa;">';
 echo '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>';
 echo '</span>';
-echo '<input type="text" class="form-control" id="keyword" name="keyword" placeholder="输入标题关键词..." value="' . e($keyword) . '">';
+echo '<input type="text" class="form-control" id="keyword" name="keyword" placeholder="输入关键词搜索帖子..." value="' . e($keyword) . '">';
+echo '</div>';
+echo '<div class="d-flex gap-2 mt-2">';
+$searchInOptions = [
+    'all' => '标题+正文',
+    'title' => '仅标题',
+    'content' => '仅正文',
+];
+foreach ($searchInOptions as $val => $label) {
+    $checked = $searchIn === $val ? ' checked' : '';
+    echo '<div class="form-check form-check-inline mb-0">';
+    echo '<input class="form-check-input" type="radio" name="search_in" id="search_in_' . e($val) . '" value="' . e($val) . '"' . $checked . '>';
+    echo '<label class="form-check-label small" for="search_in_' . e($val) . '">' . e($label) . '</label>';
+    echo '</div>';
+}
 echo '</div>';
 echo '</div>';
 
@@ -261,6 +367,9 @@ $sortOptions = [
     'comment_desc' => '评论最多',
     'comment_asc' => '评论最少',
 ];
+if ($keyword !== '') {
+    $sortOptions = ['relevance' => '相关度优先'] + $sortOptions;
+}
 foreach ($sortOptions as $val => $label) {
     $selected = $sort === $val ? ' selected' : '';
     echo '<option value="' . e($val) . '"' . $selected . '>' . e($label) . '</option>';
@@ -295,8 +404,9 @@ if ($hasFilter) {
 
     if ($keyword !== '') {
         echo '<span class="filter-badge">';
-        echo '标题：' . e($keyword);
-        echo '<span class="remove-btn" onclick="removeFilter(\'keyword\')" title="移除">×</span>';
+        $searchInLabels = ['all' => '全文', 'title' => '标题', 'content' => '正文'];
+        echo '搜索：' . e($keyword) . ' (' . ($searchInLabels[$searchIn] ?? '全文') . ')';
+        echo '<span class="remove-btn" onclick="removeFilter(\'keyword\');removeFilter(\'search_in\')" title="移除">×</span>';
         echo '</span>';
     }
     if ($author !== '') {
@@ -356,14 +466,18 @@ if (!$posts) {
     echo '</div>';
 } else {
     foreach ($posts as $post) {
-        $excerptSource = strip_tags(sanitize_rich_html((string)$post['content']));
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($excerptSource, 0, 120);
-        } else {
-            $excerpt = substr($excerptSource, 0, 120);
-        }
-        if (strlen($excerptSource) > strlen($excerpt)) {
-            $excerpt .= '...';
+        $excerpt = get_context_excerpt((string)$post['content'], $keyword, 140);
+        $titleDisplay = highlight_keyword((string)$post['title'], $keyword);
+        $excerptDisplay = highlight_keyword($excerpt, $keyword);
+
+        $titleMatch = false;
+        $contentMatch = false;
+        if ($keyword !== '') {
+            $keywordLower = mb_strtolower($keyword);
+            $titleLower = mb_strtolower((string)$post['title']);
+            $contentLower = mb_strtolower(strip_tags(sanitize_rich_html((string)$post['content'])));
+            $titleMatch = mb_strpos($titleLower, $keywordLower) !== false;
+            $contentMatch = mb_strpos($contentLower, $keywordLower) !== false;
         }
 
         $postId = (int)$post['id'];
@@ -376,8 +490,18 @@ if (!$posts) {
         echo '<div class="card-body">';
         echo '<div class="d-flex justify-content-between gap-3">';
         echo '<div class="flex-grow-1">';
-        echo '<a class="h5 text-decoration-none" href="/post.php?id=' . e((string)$post['id']) . '">' . e((string)$post['title']) . '</a>';
-        echo '<div class="text-muted small mt-2">' . e((string)$excerpt) . '</div>';
+        echo '<div class="d-flex align-items-center gap-2 mb-1">';
+        if ($keyword !== '') {
+            if ($titleMatch) {
+                echo '<span class="search-match-badge title-match">标题命中</span>';
+            }
+            if ($contentMatch) {
+                echo '<span class="search-match-badge content-match">正文命中</span>';
+            }
+        }
+        echo '</div>';
+        echo '<a class="h5 text-decoration-none" href="/post.php?id=' . e((string)$post['id']) . '">' . $titleDisplay . '</a>';
+        echo '<div class="text-muted small mt-2">' . $excerptDisplay . '</div>';
         echo '<div class="text-muted small mt-3">';
                 echo '<span class="me-2">作者：' . e((string)$post['username']) . '</span>';
                 echo '<span class="me-2">时间：' . e((string)$post['create_time']) . '</span>';
