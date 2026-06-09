@@ -7,6 +7,8 @@ declare(strict_types=1);
  * - 基于 IP + 业务标识 的组合限流（如登录防撞库）
  * - 支持自定义时间窗口和最大请求次数
  * - 使用 MySQL 存储限流记录
+ * - 使用 PHP 时间戳，避免与数据库时区不一致
+ * - 支持可信代理配置，防止 IP 伪造
  */
 
 class RateLimiter
@@ -16,6 +18,13 @@ class RateLimiter
     private int $maxRequests;
     private int $windowSeconds;
     private string $ip;
+
+    private static array $trustedProxies = [];
+
+    public static function setTrustedProxies(array $proxies): void
+    {
+        self::$trustedProxies = $proxies;
+    }
 
     public function __construct(PDO $pdo, string $action, int $maxRequests, int $windowSeconds)
     {
@@ -28,15 +37,67 @@ class RateLimiter
 
     public static function getClientIp(): string
     {
-        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $ip = trim($ips[0]);
-        } elseif (!empty($_SERVER['HTTP_X_REAL_IP'])) {
-            $ip = $_SERVER['HTTP_X_REAL_IP'];
-        } else {
-            $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        if (empty(self::$trustedProxies) || !self::isTrustedProxy($remoteAddr)) {
+            return $remoteAddr;
         }
-        return $ip;
+
+        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $ips = array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']));
+            $ips = array_values(array_filter($ips));
+            if (!empty($ips)) {
+                $ips = array_reverse($ips);
+                foreach ($ips as $ip) {
+                    if (!self::isTrustedProxy($ip)) {
+                        return $ip;
+                    }
+                }
+                return $ips[count($ips) - 1];
+            }
+        }
+
+        if (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+            return $_SERVER['HTTP_X_REAL_IP'];
+        }
+
+        return $remoteAddr;
+    }
+
+    private static function isTrustedProxy(string $ip): bool
+    {
+        foreach (self::$trustedProxies as $proxy) {
+            if (str_contains($proxy, '/')) {
+                if (self::ipInCidr($ip, $proxy)) {
+                    return true;
+                }
+            } elseif ($ip === $proxy) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function ipInCidr(string $ip, string $cidr): bool
+    {
+        [$subnet, $mask] = explode('/', $cidr, 2);
+        $mask = (int)$mask;
+        if ($mask <= 0 || $mask > 32) {
+            return false;
+        }
+
+        $ipLong = ip2long($ip);
+        $subnetLong = ip2long($subnet);
+        if ($ipLong === false || $subnetLong === false) {
+            return false;
+        }
+
+        if ($mask === 32) {
+            return $ipLong === $subnetLong;
+        }
+
+        $maskLong = ~((1 << (32 - $mask)) - 1);
+        return ($ipLong & $maskLong) === ($subnetLong & $maskLong);
     }
 
     public function isLimited(): bool
@@ -88,9 +149,9 @@ class RateLimiter
         $this->cleanupExpired();
 
         $stmt = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM rate_limit_logs WHERE action = ? AND req_key = ? AND create_time > DATE_SUB(NOW(), INTERVAL ? SECOND)'
+            'SELECT COUNT(*) FROM rate_limit_logs WHERE action = ? AND req_key = ? AND create_time > ?'
         );
-        $stmt->execute([$this->action, $key, $this->windowSeconds]);
+        $stmt->execute([$this->action, $key, $this->timestampToDatetime(time() - $this->windowSeconds)]);
         $count = (int)$stmt->fetchColumn();
 
         return $count >= $this->maxRequests;
@@ -99,9 +160,9 @@ class RateLimiter
     private function addRecord(string $key): void
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO rate_limit_logs (action, req_key, ip, create_time) VALUES (?, ?, ?, NOW())'
+            'INSERT INTO rate_limit_logs (action, req_key, ip, create_time) VALUES (?, ?, ?, ?)'
         );
-        $stmt->execute([$this->action, $key, $this->ip]);
+        $stmt->execute([$this->action, $key, $this->ip, $this->timestampToDatetime(time())]);
     }
 
     private function calcRemaining(string $key): int
@@ -109,9 +170,9 @@ class RateLimiter
         $this->cleanupExpired();
 
         $stmt = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM rate_limit_logs WHERE action = ? AND req_key = ? AND create_time > DATE_SUB(NOW(), INTERVAL ? SECOND)'
+            'SELECT COUNT(*) FROM rate_limit_logs WHERE action = ? AND req_key = ? AND create_time > ?'
         );
-        $stmt->execute([$this->action, $key, $this->windowSeconds]);
+        $stmt->execute([$this->action, $key, $this->timestampToDatetime(time() - $this->windowSeconds)]);
         $count = (int)$stmt->fetchColumn();
 
         return max(0, $this->maxRequests - $count);
@@ -123,10 +184,10 @@ class RateLimiter
 
         $stmt = $this->pdo->prepare(
             'SELECT create_time FROM rate_limit_logs 
-             WHERE action = ? AND req_key = ? AND create_time > DATE_SUB(NOW(), INTERVAL ? SECOND)
+             WHERE action = ? AND req_key = ? AND create_time > ?
              ORDER BY create_time ASC LIMIT 1'
         );
-        $stmt->execute([$this->action, $key, $this->windowSeconds]);
+        $stmt->execute([$this->action, $key, $this->timestampToDatetime(time() - $this->windowSeconds)]);
         $row = $stmt->fetchColumn();
         if (!$row) {
             return 0;
@@ -144,9 +205,14 @@ class RateLimiter
     private function cleanupExpired(): void
     {
         $stmt = $this->pdo->prepare(
-            'DELETE FROM rate_limit_logs WHERE action = ? AND create_time < DATE_SUB(NOW(), INTERVAL ? SECOND)'
+            'DELETE FROM rate_limit_logs WHERE action = ? AND create_time < ?'
         );
-        $stmt->execute([$this->action, $this->windowSeconds * 2]);
+        $stmt->execute([$this->action, $this->timestampToDatetime(time() - $this->windowSeconds * 2)]);
+    }
+
+    private function timestampToDatetime(int $timestamp): string
+    {
+        return date('Y-m-d H:i:s', $timestamp);
     }
 }
 

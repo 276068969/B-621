@@ -10,6 +10,8 @@ return [
     'app' => [
         'env' => getenv('APP_ENV') ?: 'development',
         'session_name' => getenv('SESSION_NAME') ?: 'lite_forum_sess',
+        'timezone' => getenv('APP_TIMEZONE') ?: 'Asia/Shanghai',
+        'trusted_proxies' => getenv('TRUSTED_PROXIES') ? explode(',', getenv('TRUSTED_PROXIES')) : [],
     ],
     'db' => [
         'host' => getenv('DB_HOST') ?: '127.0.0.1',

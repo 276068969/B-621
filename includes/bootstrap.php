@@ -7,6 +7,10 @@ declare(strict_types=1);
 
 $config = require __DIR__ . '/../config/config.php';
 
+if (!empty($config['app']['timezone'])) {
+    date_default_timezone_set($config['app']['timezone']);
+}
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     $sessionName = $config['app']['session_name'] ?? 'lite_forum_sess';
     session_name($sessionName);
@@ -20,4 +24,8 @@ require_once __DIR__ . '/admin_auth.php';
 require_once __DIR__ . '/layout.php';
 require_once __DIR__ . '/content_moderation.php';
 require_once __DIR__ . '/rate_limit.php';
+
+if (!empty($config['app']['trusted_proxies'])) {
+    RateLimiter::setTrustedProxies($config['app']['trusted_proxies']);
+}
 
