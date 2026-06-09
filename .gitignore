@@ -17,6 +17,7 @@ Desktop.ini
 .codex/
 .codex-fixes/
 .tmp-solo/
+.tmp-edge/
 
 # ====================== 3、日志、临时文件、全局缓存 ======================
 *.log
