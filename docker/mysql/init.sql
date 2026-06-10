@@ -62,3 +62,16 @@ CREATE TABLE IF NOT EXISTS favorites (
   CONSTRAINT fk_favorites_user_id FOREIGN KEY (user_id) REFERENCES users(id),
   CONSTRAINT fk_favorites_post_id FOREIGN KEY (post_id) REFERENCES posts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reading_history (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  post_id INT UNSIGNED NOT NULL,
+  view_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_reading_history_user_post (user_id, post_id),
+  KEY idx_reading_history_user_time (user_id, view_time),
+  KEY idx_reading_history_post_id (post_id),
+  CONSTRAINT fk_reading_history_user_id FOREIGN KEY (user_id) REFERENCES users(id),
+  CONSTRAINT fk_reading_history_post_id FOREIGN KEY (post_id) REFERENCES posts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

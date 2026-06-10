@@ -71,6 +71,11 @@ if (!$post) {
     exit;
 }
 
+$currentUser = user();
+if ($currentUser !== null) {
+    record_read_history($pdo, (int)$currentUser['id'], $id);
+}
+
 $stmt = $pdo->prepare(
     'SELECT c.id, c.content, c.create_time, u.username
      FROM comments c
@@ -83,7 +88,6 @@ $comments = $stmt->fetchAll();
 
 $hotPosts = get_hot_posts($pdo, 6, $id);
 
-$currentUser = user();
 $isFavorited = false;
 if ($currentUser !== null) {
     $isFavorited = is_post_favorited($pdo, (int)$currentUser['id'], $id);

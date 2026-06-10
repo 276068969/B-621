@@ -158,6 +158,10 @@ $posts = $stmt->fetchAll();
 $hotPosts = get_hot_posts($pdo, 8);
 
 $currentUser = user();
+$recentReadPosts = [];
+if ($currentUser !== null) {
+    $recentReadPosts = get_recent_read_posts($pdo, (int)$currentUser['id'], 6);
+}
 $favoritedMap = [];
 if ($currentUser !== null && $posts) {
     $postIds = array_column($posts, 'id');
@@ -542,6 +546,34 @@ if (!$posts) {
 
 echo '</div>';
 echo '<div class="col-lg-4 col-md-12">';
+
+if ($currentUser !== null && $recentReadPosts) {
+    echo '<div class="card card-lite mb-3">';
+    echo '<div class="card-body">';
+    echo '<div class="d-flex align-items-center justify-content-between mb-3">';
+    echo '<div class="d-flex align-items-center gap-2">';
+    echo '<span style="font-size:1.1rem;">📖</span>';
+    echo '<h2 class="h6 mb-0 fw-bold">最近浏览</h2>';
+    echo '</div>';
+    echo '<a href="/history.php" class="text-decoration-none small">查看全部</a>';
+    echo '</div>';
+    echo '<div class="list-group list-group-flush">';
+    foreach ($recentReadPosts as $rp) {
+        echo '<a href="/post.php?id=' . e((string)$rp['id']) . '" class="list-group-item list-group-item-action px-0 py-2" style="border:0;">';
+        echo '<div class="d-flex w-100 justify-content-between">';
+        echo '<h6 class="mb-1 small fw-medium" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4;">' . e((string)$rp['title']) . '</h6>';
+        echo '</div>';
+        echo '<div class="d-flex align-items-center gap-2 text-muted small">';
+        echo '<span>' . e((string)$rp['username']) . '</span>';
+        echo '<span>·</span>';
+        echo '<span>' . e((string)$rp['comment_count']) . ' 评论</span>';
+        echo '</div>';
+        echo '</a>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+}
 
 echo '<div class="card card-lite hot-rank-card">';
 echo '<div class="card-body">';

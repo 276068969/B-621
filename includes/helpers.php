@@ -256,3 +256,104 @@ function get_user_favorite_count(PDO $pdo, int $userId): int
     return (int)$stmt->fetchColumn();
 }
 
+function record_read_history(PDO $pdo, int $userId, int $postId): void
+{
+    if ($userId <= 0 || $postId <= 0) {
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO reading_history (user_id, post_id)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE view_time = CURRENT_TIMESTAMP'
+    );
+    $stmt->execute([$userId, $postId]);
+}
+
+function get_user_reading_history(PDO $pdo, int $userId, int $page, int $pageSize): array
+{
+    $offset = ($page - 1) * $pageSize;
+
+    $sql = 'SELECT rh.id AS history_id, rh.view_time,
+                   p.id, p.title, p.content, p.create_time, p.update_time, p.status,
+                   u.username,
+                   COALESCE(c.cnt, 0) AS comment_count
+            FROM reading_history rh
+            JOIN posts p ON p.id = rh.post_id
+            JOIN users u ON u.id = p.user_id
+            LEFT JOIN (
+                SELECT post_id, COUNT(*) AS cnt
+                FROM comments
+                WHERE status = 1
+                GROUP BY post_id
+            ) c ON c.post_id = p.id
+            WHERE rh.user_id = ? AND p.status = 1
+            ORDER BY rh.view_time DESC
+            LIMIT ? OFFSET ?';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $pageSize, PDO::PARAM_INT);
+    $stmt->bindValue(3, $offset, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function get_user_reading_history_count(PDO $pdo, int $userId): int
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM reading_history rh
+         JOIN posts p ON p.id = rh.post_id
+         WHERE rh.user_id = ? AND p.status = 1'
+    );
+    $stmt->execute([$userId]);
+    return (int)$stmt->fetchColumn();
+}
+
+function get_recent_read_posts(PDO $pdo, int $userId, int $limit = 5): array
+{
+    if ($userId <= 0 || $limit <= 0) {
+        return [];
+    }
+
+    $sql = 'SELECT rh.view_time,
+                   p.id, p.title, p.create_time,
+                   u.username,
+                   COALESCE(c.cnt, 0) AS comment_count
+            FROM reading_history rh
+            JOIN posts p ON p.id = rh.post_id
+            JOIN users u ON u.id = p.user_id
+            LEFT JOIN (
+                SELECT post_id, COUNT(*) AS cnt
+                FROM comments
+                WHERE status = 1
+                GROUP BY post_id
+            ) c ON c.post_id = p.id
+            WHERE rh.user_id = ? AND p.status = 1
+            ORDER BY rh.view_time DESC
+            LIMIT ?';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+    $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function delete_read_history(PDO $pdo, int $userId, int $postId): bool
+{
+    $stmt = $pdo->prepare('DELETE FROM reading_history WHERE user_id = ? AND post_id = ?');
+    $stmt->execute([$userId, $postId]);
+    return $stmt->rowCount() > 0;
+}
+
+function clear_read_history(PDO $pdo, int $userId): int
+{
+    $stmt = $pdo->prepare('DELETE FROM reading_history WHERE user_id = ?');
+    $stmt->execute([$userId]);
+    return $stmt->rowCount();
+}
+

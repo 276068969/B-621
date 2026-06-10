@@ -121,6 +121,7 @@ function render_header(array $config, array $options = []): void
             echo '</a>';
             echo '<ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg animate-slide-up">';
             echo '<li><a class="dropdown-item" href="/profile.php">我的主页</a></li>';
+            echo '<li><a class="dropdown-item" href="/history.php">最近浏览</a></li>';
             echo '<li><a class="dropdown-item" href="/favorites.php">我的收藏</a></li>';
             echo '<li><hr class="dropdown-divider"></li>';
             echo '<li><a class="dropdown-item" href="/logout.php">退出登录</a></li>';
