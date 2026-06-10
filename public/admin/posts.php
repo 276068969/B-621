@@ -26,6 +26,9 @@ if (!in_array($status, ['all', 'active', 'deleted'], true)) {
     $status = 'all';
 }
 
+$boardId = isset($_GET['board_id']) ? (int)$_GET['board_id'] : 0;
+$boards = get_boards($pdo, false);
+
 $keyword = isset($_GET['keyword']) ? trim((string)$_GET['keyword']) : '';
 $searchIn = isset($_GET['search_in']) ? trim((string)$_GET['search_in']) : 'all';
 if (!in_array($searchIn, ['all', 'title', 'content'], true)) {
@@ -43,6 +46,11 @@ if ($status === 'active') {
     $whereConditions[] = 'p.status = 1';
 } elseif ($status === 'deleted') {
     $whereConditions[] = 'p.status = 0';
+}
+
+if ($boardId > 0) {
+    $whereConditions[] = 'p.board_id = :board_id';
+    $params[':board_id'] = $boardId;
 }
 
 if ($keyword !== '') {
@@ -106,9 +114,11 @@ if ($keyword !== '') {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.title, p.content, p.create_time, p.update_time, p.status, u.username' . $scoreFields . '
+    'SELECT p.id, p.board_id, p.title, p.content, p.create_time, p.update_time, p.status, u.username,
+            b.name AS board_name' . $scoreFields . '
      FROM posts p
-     JOIN users u ON u.id = p.user_id'
+     JOIN users u ON u.id = p.user_id
+     LEFT JOIN boards b ON b.id = p.board_id'
     . $whereSql .
     ' ' . $orderSql . '
      LIMIT :limit OFFSET :offset'
@@ -139,7 +149,17 @@ echo '<div class="card-body p-3">';
 echo '<form method="get" action="/admin/posts.php" id="searchForm">';
 echo '<input type="hidden" name="status" value="' . e($status) . '">';
 echo '<div class="row g-3 align-items-end">';
-echo '<div class="col-md-6 col-12">';
+echo '<div class="col-md-3 col-12">';
+echo '<label class="form-label small fw-medium mb-1" for="board_id">版块筛选</label>';
+echo '<select class="form-select" id="board_id" name="board_id" onchange="document.getElementById(\'searchForm\').submit()">';
+echo '<option value="">全部版块</option>';
+foreach ($boards as $b) {
+    $selected = $boardId === (int)$b['id'] ? ' selected' : '';
+    echo '<option value="' . e((string)$b['id']) . '"' . $selected . '>' . e((string)$b['name']) . '</option>';
+}
+echo '</select>';
+echo '</div>';
+echo '<div class="col-md-5 col-12">';
 echo '<label class="form-label small fw-medium mb-1" for="keyword">关键词搜索</label>';
 echo '<div class="input-group">';
 echo '<span class="input-group-text" style="background:#f8f9fa;">';
@@ -147,12 +167,12 @@ echo '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="curre
 echo '</span>';
 echo '<input type="text" class="form-control" id="keyword" name="keyword" placeholder="输入关键词搜索帖子..." value="' . e($keyword) . '">';
 echo '<button type="submit" class="btn btn-primary">搜索</button>';
-if ($keyword) {
+if ($keyword || $boardId > 0) {
     echo '<a href="/admin/posts.php?status=' . e($status) . '" class="btn btn-outline-secondary">清除</a>';
 }
 echo '</div>';
 echo '</div>';
-echo '<div class="col-md-6 col-12">';
+echo '<div class="col-md-4 col-12">';
 echo '<label class="form-label small fw-medium mb-1">搜索范围</label>';
 echo '<div class="d-flex gap-3">';
 $searchInOptions = [
@@ -266,11 +286,11 @@ echo '<div class="card-body p-0">';
 echo '<div class="table-responsive">';
 echo '<table class="table table-hover mb-0">';
 echo '<thead class="table-light"><tr>'; 
-echo '<th class="ps-3">标题</th><th>作者</th><th>发布时间</th><th>更新时间</th><th>状态</th><th class="text-end pe-3">操作</th>';
+echo '<th class="ps-3">标题</th><th>版块</th><th>作者</th><th>发布时间</th><th>更新时间</th><th>状态</th><th class="text-end pe-3">操作</th>';
 echo '</tr></thead><tbody>';
 
 if (!$rows) {
-    echo '<tr><td class="ps-3 py-4 text-muted" colspan="6">';
+    echo '<tr><td class="ps-3 py-4 text-muted" colspan="7">';
     if ($keyword) {
         echo '没有找到匹配的帖子';
     } else {
@@ -297,6 +317,8 @@ if (!$rows) {
             $contentMatch = mb_strpos($contentLower, $keywordLower) !== false;
         }
 
+        $boardName = !empty($r['board_name']) ? e((string)$r['board_name']) : '<span class="text-muted">未分类</span>';
+
         echo '<tr>'; 
         echo '<td class="ps-3">';
         echo '<div class="fw-medium">' . $titleDisplay . '</div>';
@@ -312,6 +334,7 @@ if (!$rows) {
             echo '</div>';
         }
         echo '</td>';
+        echo '<td>' . $boardName . '</td>';
         echo '<td>' . e((string)$r['username']) . '</td>';
         echo '<td class="text-muted small">' . e((string)$r['create_time']) . '</td>';
         echo '<td class="text-muted small">' . (!empty($r['update_time']) ? e((string)$r['update_time']) : '-') . '</td>';

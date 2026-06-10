@@ -23,8 +23,15 @@ try {
     exit;
 }
 
+$boards = get_boards($pdo);
+
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $pageSize = 10;
+
+$boardId = isset($_GET['board_id']) ? (int)$_GET['board_id'] : 0;
+if ($boardId > 0 && !is_valid_board_id($pdo, $boardId)) {
+    $boardId = 0;
+}
 
 $keyword = isset($_GET['keyword']) ? trim((string)$_GET['keyword']) : '';
 $searchIn = isset($_GET['search_in']) ? trim((string)$_GET['search_in']) : 'all';
@@ -38,10 +45,15 @@ $dateFrom = isset($_GET['date_from']) ? trim((string)$_GET['date_from']) : '';
 $dateTo = isset($_GET['date_to']) ? trim((string)$_GET['date_to']) : '';
 $sort = isset($_GET['sort']) ? trim((string)$_GET['sort']) : 'time_desc';
 
-$hasFilter = $keyword !== '' || $author !== '' || $commentMin > 0 || $commentMax > 0 || $dateFrom !== '' || $dateTo !== '';
+$hasFilter = $boardId > 0 || $keyword !== '' || $author !== '' || $commentMin > 0 || $commentMax > 0 || $dateFrom !== '' || $dateTo !== '';
 
 $whereConditions = ['p.status = 1'];
 $params = [];
+
+if ($boardId > 0) {
+    $whereConditions[] = 'p.board_id = :board_id';
+    $params[':board_id'] = $boardId;
+}
 
 if ($keyword !== '') {
     $searchConditions = [];
@@ -131,10 +143,12 @@ if ($keyword !== '') {
     }
 }
 
-$listSql = 'SELECT p.id, p.title, p.content, p.create_time, p.update_time, u.username,
+$listSql = 'SELECT p.id, p.board_id, p.title, p.content, p.create_time, p.update_time, u.username,
+            b.name AS board_name,
             COALESCE(c.cnt, 0) AS comment_count' . $scoreFields . '
      FROM posts p
      JOIN users u ON u.id = p.user_id
+     LEFT JOIN boards b ON b.id = p.board_id
      LEFT JOIN (
          SELECT post_id, COUNT(*) AS cnt
          FROM comments
@@ -302,6 +316,7 @@ echo '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="curre
 echo '筛选';
 if ($hasFilter) {
     echo '<span class="badge bg-primary rounded-pill" style="font-size:.65rem;">' . (
+        ($boardId > 0 ? 1 : 0) +
         ($keyword !== '' ? 1 : 0) +
         ($author !== '' ? 1 : 0) +
         ($commentMin > 0 || $commentMax > 0 ? 1 : 0) +
@@ -316,6 +331,24 @@ if (user() !== null) {
 }
 echo '</div>';
 echo '</div>';
+
+if ($boards) {
+    echo '<div class="card card-lite mb-3">';
+    echo '<div class="card-body p-2">';
+    echo '<div class="d-flex flex-wrap gap-2">';
+    $allActive = $boardId === 0 ? 'active' : '';
+    $allQs = build_query_string(['board_id' => '']);
+    echo '<a class="btn btn-sm ' . ($boardId === 0 ? 'btn-primary' : 'btn-outline-secondary') . '" href="/index.php' . e($allQs ? $allQs : '') . '">全部</a>';
+    foreach ($boards as $b) {
+        $bid = (int)$b['id'];
+        $isActive = $boardId === $bid;
+        $qs = build_query_string(['board_id' => $bid]);
+        echo '<a class="btn btn-sm ' . ($isActive ? 'btn-primary' : 'btn-outline-secondary') . '" href="/index.php' . e($qs ? $qs : '?board_id=' . $bid) . '">' . e((string)$b['name']) . '</a>';
+    }
+    echo '</div>';
+    echo '</div>';
+    echo '</div>';
+}
 
 echo '<div class="card filter-card mb-3 filter-panel show" id="filterPanel">';
 echo '<div class="card-body p-3">';
@@ -406,6 +439,15 @@ if ($hasFilter) {
     echo '<div class="d-flex flex-wrap gap-2 mb-3 align-items-center">';
     echo '<span class="text-muted small">当前筛选：</span>';
 
+    if ($boardId > 0) {
+        $boardInfo = get_board_by_id($pdo, $boardId);
+        if ($boardInfo) {
+            echo '<span class="filter-badge">';
+            echo '版块：' . e((string)$boardInfo['name']);
+            echo '<span class="remove-btn" onclick="removeFilter(\'board_id\')" title="移除">×</span>';
+            echo '</span>';
+        }
+    }
     if ($keyword !== '') {
         echo '<span class="filter-badge">';
         $searchInLabels = ['all' => '全文', 'title' => '标题', 'content' => '正文'];
@@ -494,7 +536,10 @@ if (!$posts) {
         echo '<div class="card-body">';
         echo '<div class="d-flex justify-content-between gap-3">';
         echo '<div class="flex-grow-1">';
-        echo '<div class="d-flex align-items-center gap-2 mb-1">';
+        echo '<div class="d-flex align-items-center gap-2 mb-1 flex-wrap">';
+        if (!empty($post['board_name'])) {
+            echo '<span class="badge bg-info bg-opacity-10 text-info" style="font-size:.75rem;">' . e((string)$post['board_name']) . '</span>';
+        }
         if ($keyword !== '') {
             if ($titleMatch) {
                 echo '<span class="search-match-badge title-match">标题命中</span>';

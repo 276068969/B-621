@@ -25,7 +25,7 @@ if ($id <= 0) {
     redirect('/admin/posts.php');
 }
 
-$stmt = $pdo->prepare('SELECT id, title, content, status FROM posts WHERE id = ? LIMIT 1');
+$stmt = $pdo->prepare('SELECT id, board_id, title, content, status FROM posts WHERE id = ? LIMIT 1');
 $stmt->execute([$id]);
 $post = $stmt->fetch();
 
@@ -34,19 +34,26 @@ if (!$post) {
     redirect('/admin/posts.php');
 }
 
+$boards = get_boards($pdo, false);
+
 $title = (string)$post['title'];
 $content = (string)$post['content'];
+$boardId = (int)$post['board_id'];
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim((string)($_POST['title'] ?? ''));
     $content = (string)($_POST['content'] ?? '');
+    $boardId = isset($_POST['board_id']) ? (int)$_POST['board_id'] : 0;
 
     if ($title === '' || strlen($title) > 200) {
         $errors['title'] = '标题为必填，且不超过 200 字。';
     }
     if (trim(strip_tags($content)) === '') {
         $errors['content'] = '帖子内容不能为空。';
+    }
+    if ($boardId <= 0 || !is_valid_board_id($pdo, $boardId, false)) {
+        $errors['board_id'] = '请选择有效的版块。';
     }
 
     if (!$errors) {
@@ -64,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         $oldTitle = (string)$post['title'];
         $oldContent = (string)$post['content'];
+        $oldBoardId = (int)$post['board_id'];
         $changes = [];
         if ($oldTitle !== $title) {
             $changes[] = '标题: "' . mb_substr($oldTitle, 0, 50) . '" → "' . mb_substr($title, 0, 50) . '"';
@@ -71,10 +79,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($oldContent !== $content) {
             $changes[] = '内容已更新';
         }
+        if ($oldBoardId !== $boardId) {
+            $oldBoard = get_board_by_id($pdo, $oldBoardId);
+            $newBoard = get_board_by_id($pdo, $boardId);
+            $oldBoardName = $oldBoard ? $oldBoard['name'] : '未分类';
+            $newBoardName = $newBoard ? $newBoard['name'] : '未分类';
+            $changes[] = '版块: ' . $oldBoardName . ' → ' . $newBoardName;
+        }
         $detail = !empty($changes) ? implode('; ', $changes) : '帖子内容无变化';
 
-        $stmt = $pdo->prepare('UPDATE posts SET title = ?, content = ?, update_time = NOW() WHERE id = ?');
-        $stmt->execute([$title, $content, $id]);
+        $stmt = $pdo->prepare('UPDATE posts SET board_id = ?, title = ?, content = ?, update_time = NOW() WHERE id = ?');
+        $stmt->execute([$boardId, $title, $content, $id]);
         admin_log_operation($pdo, 'post_edit', 'post', $id, $detail);
         flash_set('success', '帖子已更新。');
         redirect('/admin/posts.php');
@@ -105,6 +120,20 @@ echo '<h2 class="h6 mb-0 text-muted">编辑区</h2>';
 echo '</div>';
 
 echo '<form method="post" novalidate id="postForm">'; 
+
+echo '<div class="mb-3">';
+echo '<label class="form-label">版块<span class="required-star">*</span></label>';
+echo '<select class="form-select" name="board_id" id="board_id" required>';
+echo '<option value="">请选择版块</option>';
+foreach ($boards as $b) {
+    $selected = $boardId === (int)$b['id'] ? ' selected' : '';
+    echo '<option value="' . e((string)$b['id']) . '"' . $selected . '>' . e((string)$b['name']) . '</option>';
+}
+echo '</select>';
+if (isset($errors['board_id'])) {
+    echo '<div class="text-danger small mt-1">' . e($errors['board_id']) . '</div>';
+}
+echo '</div>';
 
 echo '<div class="mb-3">';
 echo '<label class="form-label">标题<span class="required-star">*</span></label>';

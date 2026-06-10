@@ -143,6 +143,7 @@ echo '<div class="fw-bold mb-4 fs-5">快捷管理</div>';
 echo '<div class="d-flex flex-column gap-3">';
 echo '<a class="btn btn-primary px-4 py-2 rounded-pill fw-semibold shadow-sm" href="/admin/posts.php">帖子管理</a>';
 echo '<a class="btn btn-info px-4 py-2 rounded-pill fw-semibold shadow-sm text-white" href="/admin/comments.php">评论管理</a>';
+echo '<a class="btn btn-success px-4 py-2 rounded-pill fw-semibold shadow-sm text-white" href="/admin/boards.php">版块管理</a>';
 echo '<a class="btn btn-outline-secondary px-4 py-2 rounded-pill fw-semibold" href="/index.php">返回前台</a>';
 echo '</div></div></div>';
 echo '</div>';

@@ -357,3 +357,65 @@ function clear_read_history(PDO $pdo, int $userId): int
     return $stmt->rowCount();
 }
 
+function get_boards(PDO $pdo, bool $onlyActive = true): array
+{
+    $whereConditions = [];
+    if ($onlyActive) {
+        $whereConditions[] = 'status = 1';
+    }
+    $whereSql = $whereConditions ? ' WHERE ' . implode(' AND ', $whereConditions) : '';
+
+    $sql = 'SELECT id, name, description, sort_order, status, create_time, update_time
+            FROM boards' . $whereSql . '
+            ORDER BY sort_order ASC, id ASC';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute();
+    return $stmt->fetchAll();
+}
+
+function get_board_by_id(PDO $pdo, int $boardId): ?array
+{
+    if ($boardId <= 0) {
+        return null;
+    }
+    $stmt = $pdo->prepare('SELECT id, name, description, sort_order, status, create_time, update_time FROM boards WHERE id = ? LIMIT 1');
+    $stmt->execute([$boardId]);
+    $board = $stmt->fetch();
+    return $board ?: null;
+}
+
+function get_board_post_count(PDO $pdo, int $boardId, bool $onlyActive = true): int
+{
+    if ($boardId <= 0) {
+        return 0;
+    }
+    $whereConditions = ['board_id = ?'];
+    $params = [$boardId];
+    if ($onlyActive) {
+        $whereConditions[] = 'status = 1';
+    }
+    $whereSql = implode(' AND ', $whereConditions);
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM posts WHERE ' . $whereSql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn();
+}
+
+function is_valid_board_id(PDO $pdo, int $boardId, bool $onlyActive = true): bool
+{
+    if ($boardId <= 0) {
+        return false;
+    }
+    $whereConditions = ['id = ?'];
+    $params = [$boardId];
+    if ($onlyActive) {
+        $whereConditions[] = 'status = 1';
+    }
+    $whereSql = implode(' AND ', $whereConditions);
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM boards WHERE ' . $whereSql . ' LIMIT 1');
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn() > 0;
+}
+

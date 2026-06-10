@@ -77,6 +77,11 @@ function admin_get_action_label(string $action): string
         'post_restore' => '恢复帖子',
         'comment_delete' => '删除评论',
         'comment_restore' => '恢复评论',
+        'board_create' => '创建版块',
+        'board_edit' => '编辑版块',
+        'board_delete' => '删除版块',
+        'board_toggle_status' => '切换版块状态',
+        'board_sort' => '调整版块顺序',
     ];
     return $labels[$action] ?? $action;
 }
@@ -92,6 +97,11 @@ function admin_get_action_badge_class(string $action): string
         'post_restore' => 'bg-info',
         'comment_delete' => 'bg-danger',
         'comment_restore' => 'bg-info',
+        'board_create' => 'bg-success',
+        'board_edit' => 'bg-warning text-dark',
+        'board_delete' => 'bg-danger',
+        'board_toggle_status' => 'bg-info',
+        'board_sort' => 'bg-secondary',
     ];
     return $classes[$action] ?? 'bg-secondary';
 }

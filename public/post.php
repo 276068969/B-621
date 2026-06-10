@@ -55,9 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.user_id, p.title, p.content, p.create_time, p.update_time, u.username
+    'SELECT p.id, p.board_id, p.user_id, p.title, p.content, p.create_time, p.update_time, u.username,
+            b.name AS board_name
      FROM posts p
      JOIN users u ON u.id = p.user_id
+     LEFT JOIN boards b ON b.id = p.board_id
      WHERE p.id = ? AND p.status = 1
      LIMIT 1'
 );
@@ -104,7 +106,12 @@ $favClass = $isFavorited ? 'btn-favorite active' : 'btn-favorite';
 $favTitle = $isFavorited ? '取消收藏' : '收藏';
 
 echo '<div class="d-flex justify-content-between flex-wrap gap-2">';
+echo '<div>';
 echo '<h1 class="h4 mb-0">' . e((string)$post['title']) . '</h1>';
+if (!empty($post['board_name'])) {
+    echo '<span class="badge bg-info bg-opacity-10 text-info mt-2" style="font-size:.8rem;">' . e((string)$post['board_name']) . '</span>';
+}
+echo '</div>';
 echo '<div class="d-flex gap-2">';
 if ($currentUser !== null) {
     echo '<form method="post" action="/favorite_toggle.php" class="favorite-form" data-post-id="' . $id . '">';

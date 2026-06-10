@@ -66,6 +66,7 @@ function render_header(array $config, array $options = []): void
         echo '<div class="collapse navbar-collapse" id="navAdmin">';
         echo '<ul class="navbar-nav me-auto mb-2 mb-lg-0">';
         echo '<li class="nav-item"><a class="nav-link ' . ($active === 'admin' ? 'active fw-bold text-white' : '') . '" href="/admin/index.php">概览</a></li>';
+        echo '<li class="nav-item"><a class="nav-link ' . ($active === 'boards' ? 'active fw-bold text-white' : '') . '" href="/admin/boards.php">版块管理</a></li>';
         echo '<li class="nav-item"><a class="nav-link ' . ($active === 'posts' ? 'active fw-bold text-white' : '') . '" href="/admin/posts.php">帖子管理</a></li>';
         echo '<li class="nav-item"><a class="nav-link ' . ($active === 'comments' ? 'active fw-bold text-white' : '') . '" href="/admin/comments.php">评论管理</a></li>';
         echo '</ul>';

@@ -27,7 +27,7 @@ if ($id <= 0) {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT p.id, p.user_id, p.title, p.content, p.create_time, p.update_time, p.status, u.username
+    'SELECT p.id, p.board_id, p.user_id, p.title, p.content, p.create_time, p.update_time, p.status, u.username
      FROM posts p
      JOIN users u ON u.id = p.user_id
      WHERE p.id = ?
@@ -35,6 +35,8 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute([$id]);
 $post = $stmt->fetch();
+
+$boards = get_boards($pdo);
 
 if (!$post || (int)$post['status'] !== 1) {
     flash_set('danger', '帖子不存在或已被删除。');
@@ -66,17 +68,22 @@ if (!can_user_edit_post($config, $u, $post, $commentCount)) {
 
 $title = (string)$post['title'];
 $content = (string)$post['content'];
+$boardId = (int)$post['board_id'];
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = trim((string)($_POST['title'] ?? ''));
     $content = (string)($_POST['content'] ?? '');
+    $boardId = isset($_POST['board_id']) ? (int)$_POST['board_id'] : 0;
 
     if ($title === '' || strlen($title) > 200) {
         $errors['title'] = '标题为必填，且不超过 200 字。';
     }
     if (trim(strip_tags($content)) === '') {
         $errors['content'] = '帖子内容不能为空。';
+    }
+    if ($boardId <= 0 || !is_valid_board_id($pdo, $boardId)) {
+        $errors['board_id'] = '请选择有效的版块。';
     }
 
     if (!$errors) {
@@ -97,8 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/post.php?id=' . $id);
         }
 
-        $stmt = $pdo->prepare('UPDATE posts SET title = ?, content = ?, update_time = NOW() WHERE id = ?');
-        $stmt->execute([$title, $content, $id]);
+        $stmt = $pdo->prepare('UPDATE posts SET board_id = ?, title = ?, content = ?, update_time = NOW() WHERE id = ?');
+        $stmt->execute([$boardId, $title, $content, $id]);
         flash_set('success', '帖子已更新。');
         redirect('/post.php?id=' . $id);
     }
@@ -141,6 +148,22 @@ echo '<h2 class="h6 mb-0 text-muted">编辑区</h2>';
 echo '</div>';
 
 echo '<form method="post" class="needs-validation" id="postForm" novalidate>'; 
+
+echo '<div class="mb-3">';
+echo '<label class="form-label fw-bold" for="board_id">选择版块 <span class="required-star">*</span></label>';
+echo '<select class="form-select" id="board_id" name="board_id" required>';
+echo '<option value="">请选择版块</option>';
+foreach ($boards as $b) {
+    $selected = $boardId === (int)$b['id'] ? ' selected' : '';
+    echo '<option value="' . e((string)$b['id']) . '"' . $selected . '>' . e((string)$b['name']) . '</option>';
+}
+echo '</select>';
+echo '<div class="form-text">请选择帖子所属的版块。</div>';
+echo '<div class="invalid-feedback">请选择版块。</div>';
+if (isset($errors['board_id'])) {
+    echo '<div class="text-danger small mt-1">❌ ' . e($errors['board_id']) . '</div>';
+}
+echo '</div>';
 
 echo '<div class="form-floating mb-3">';
 echo '<input class="form-control" name="title" id="title" placeholder="标题" maxlength="200" required value="' . e($title) . '">';
