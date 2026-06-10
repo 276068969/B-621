@@ -26,6 +26,7 @@ $trendStats = get_trend_stats($pdo, 7);
 $hourlyStats = get_hourly_stats($pdo, 30);
 $structureStats = get_structure_stats($pdo, $basicStats);
 $topPosts = get_top_comment_posts($pdo, 5);
+$recentLogs = admin_get_recent_logs($pdo, 10);
 
 render_header($config, ['title' => '后台概览 - Lite Forum', 'active' => 'admin']);
 
@@ -143,7 +144,21 @@ echo '<div class="d-flex flex-column gap-3">';
 echo '<a class="btn btn-primary px-4 py-2 rounded-pill fw-semibold shadow-sm" href="/admin/posts.php">帖子管理</a>';
 echo '<a class="btn btn-info px-4 py-2 rounded-pill fw-semibold shadow-sm text-white" href="/admin/comments.php">评论管理</a>';
 echo '<a class="btn btn-outline-secondary px-4 py-2 rounded-pill fw-semibold" href="/index.php">返回前台</a>';
+echo '</div></div></div>';
 echo '</div>';
+echo '</div>';
+
+// ===== 第五行：最近管理行为 =====
+echo '<div class="row g-4 mb-4">';
+echo '<div class="col-12"><div class="card card-lite border-0 shadow-sm"><div class="card-body p-4">';
+render_section_header('最近管理行为', 'journal-text', 'primary');
+
+if (count($recentLogs) > 0) {
+    render_admin_logs_list($recentLogs);
+} else {
+    render_empty_state('暂无操作记录', '管理员进行登录、编辑、删除等操作后，这里会显示操作时间线');
+}
+
 echo '</div></div></div>';
 echo '</div>';
 
@@ -338,6 +353,62 @@ function format_change_text(float $change): string
 }
 
 /**
+ * 渲染最近管理行为时间线
+ */
+function render_admin_logs_list(array $logs): void
+{
+    echo '<div class="position-relative">';
+    echo '<div class="position-absolute top-0 bottom-0" style="left: 15px; width: 2px; background-color: #e9ecef;"></div>';
+
+    foreach ($logs as $log) {
+        $actionLabel = admin_get_action_label((string)$log['action']);
+        $badgeClass = admin_get_action_badge_class((string)$log['action']);
+        $createTime = (string)$log['create_time'];
+        $adminName = (string)$log['admin_username'];
+        $detail = $log['detail'] !== null ? (string)$log['detail'] : '';
+        $ip = (string)$log['ip'];
+
+        $timeStr = '';
+        $timestamp = strtotime($createTime);
+        if ($timestamp !== false) {
+            $now = time();
+            $diff = $now - $timestamp;
+            if ($diff < 60) {
+                $timeStr = $diff . ' 秒前';
+            } elseif ($diff < 3600) {
+                $timeStr = (int)($diff / 60) . ' 分钟前';
+            } elseif ($diff < 86400) {
+                $timeStr = (int)($diff / 3600) . ' 小时前';
+            } else {
+                $timeStr = date('m-d H:i', $timestamp);
+            }
+        }
+
+        echo '<div class="d-flex gap-3 mb-3 position-relative">';
+        echo '<div class="bg-white border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 z-1" style="width: 32px; height: 32px;">';
+        echo '<span class="badge ' . $badgeClass . ' rounded-circle" style="width: 10px; height: 10px; display: inline-block;"></span>';
+        echo '</div>';
+        echo '<div class="flex-grow-1">';
+        echo '<div class="d-flex flex-wrap align-items-center gap-2 mb-1">';
+        echo '<span class="badge ' . $badgeClass . ' fs-6 py-1 px-2">' . e($actionLabel) . '</span>';
+        echo '<span class="fw-medium">' . e($adminName) . '</span>';
+        echo '<span class="text-muted small ms-auto">' . e($timeStr) . '</span>';
+        echo '</div>';
+        if ($detail !== '') {
+            echo '<div class="text-muted small mb-1">' . e($detail) . '</div>';
+        }
+        echo '<div class="text-muted small">';
+        echo '<span class="me-3">IP: ' . e($ip) . '</span>';
+        echo '<span>时间: ' . e($createTime) . '</span>';
+        echo '</div>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    echo '</div>';
+}
+
+/**
  * 获取 Bootstrap Icons SVG 字符串
  */
 function get_bi_icon(string $name, int $size = 20): string
@@ -351,6 +422,7 @@ function get_bi_icon(string $name, int $size = 20): string
         'graph-up' => '<path fill-rule="evenodd" d="M0 0h1v15h15v1H0V0Zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07Z"/>',
         'clock-history' => '<path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022l-.074.997zm2.004.45a7.003 7.003 0 0 0-.985-.299l.219-.976c.383.086.76.2 1.126.342l-.36.933zm1.37.71a7.01 7.01 0 0 0-.439-.27l.493-.87a8.025 8.025 0 0 1 .979.654l-.615.789a6.996 6.996 0 0 0-.418-.302zm1.834 1.79a6.99 6.99 0 0 0-.653-.796l.724-.69c.27.285.52.59.747.91l-.818.576zm.744 1.352a7.08 7.08 0 0 0-.214-.468l.893-.45a7.976 7.976 0 0 1 .45 1.088l-.95.313a7.023 7.023 0 0 0-.179-.483zm.622 2.247a6.99 6.99 0 0 0-.1-1.025l.995-.1a8.014 8.014 0 0 1 .087 1.074l-.982.051zM14.988 9a6.967 6.967 0 0 0-.232-1.634l.98-.198a8.009 8.009 0 0 1 .198 1.832h-.946zm-.668 2.068a7.004 7.004 0 0 0 .379-1.068l.977.208a8.001 8.001 0 0 1-.452 1.27l-.904-.41zM13.42 12.99a6.97 6.97 0 0 0 .602-.91l.804.593a8.025 8.025 0 0 1-.743 1.115l-.663-.798zm-1.412 1.727a6.98 6.98 0 0 0 .789-.663l.678.735a8.007 8.007 0 0 1-.978.81l-.489-.882zM10.431 14.97a7.01 7.01 0 0 0 .944-.29l.42.907a8.008 8.008 0 0 1-1.125.346l-.239-.963zM9.05 15.667A7.004 7.004 0 0 0 10 15.5v1a8.02 8.02 0 0 1-1 .031v-.998l.05.034z"/><path d="M8 13.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zM8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1z"/><path d="M7.5 3a.5.5 0 0 1 .5.5v4.25l2.5 1.5a.5.5 0 0 1-.5.866L7.5 8.536V3.5a.5.5 0 0 1 .5-.5z"/>',
         'trophy' => '<path d="M2.5.5A.5.5 0 0 1 3 0h10a.5.5 0 0 1 .5.5q0 .807-.034 1.536a3 3 0 1 1-3.133 3.268 5 5 0 0 1-1.337.76V8.5h1a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h1v-2.436a5 5 0 0 1-1.337-.76A3 3 0 1 1 2.034 2.036.5.5 0 0 1 2.5.5zM3 3a2 2 0 1 0 4 0 2 2 0 0 0-4 0zm6 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0z"/><path d="M3.02 6.758a5 5 0 0 0 2.046 1.343c.304.533.708 1.001 1.184 1.387V13h-1.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h5a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5H9v-3.512c.476-.386.88-.854 1.184-1.387a5 5 0 0 0 2.046-1.343C12.66 6.398 13 5.68 13 5V2.08l.117-.21q.043-.372.07-.77H14v3.9q0 .85-.382 1.618a3.2 3.2 0 0 1-1.087 1.282 5.2 5.2 0 0 1-1.623.797c-.19.602-.522 1.156-.98 1.636-.457.48-.977.855-1.528 1.111V14H7.5v-1.512c-.551-.256-1.071-.631-1.528-1.11a5.5 5.5 0 0 1-.98-1.637 5.2 5.2 0 0 1-1.623-.797A3.2 3.2 0 0 1 2.382 7.9 3.1 3.1 0 0 1 2 6.28V2.08h.117L3 2.08V5c0 .68.34 1.398.02 1.758z"/>',
+        'journal-text' => '<path d="M5 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm0-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5z"/><path fill-rule="evenodd" d="M1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1zm2-1a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H3z"/>',
     ];
 
     $path = $icons[$name] ?? '';

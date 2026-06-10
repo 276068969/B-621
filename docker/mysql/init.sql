@@ -75,3 +75,19 @@ CREATE TABLE IF NOT EXISTS reading_history (
   CONSTRAINT fk_reading_history_user_id FOREIGN KEY (user_id) REFERENCES users(id),
   CONSTRAINT fk_reading_history_post_id FOREIGN KEY (post_id) REFERENCES posts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_operation_logs (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  admin_username VARCHAR(64) NOT NULL,
+  action VARCHAR(64) NOT NULL,
+  target_type VARCHAR(32) NULL,
+  target_id INT UNSIGNED NULL,
+  detail TEXT NULL,
+  ip VARCHAR(45) NOT NULL,
+  user_agent VARCHAR(512) NULL,
+  create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_admin_logs_action (action),
+  KEY idx_admin_logs_create_time (create_time),
+  KEY idx_admin_logs_admin (admin_username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

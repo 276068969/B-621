@@ -20,11 +20,21 @@ if ($id <= 0) {
 try {
     $pdo = db($config);
     $pdo->beginTransaction();
+
+    $stmt = $pdo->prepare('SELECT title FROM posts WHERE id = ? LIMIT 1');
+    $stmt->execute([$id]);
+    $post = $stmt->fetch();
+    $postTitle = $post ? (string)$post['title'] : '';
+
     $stmt = $pdo->prepare('UPDATE posts SET status = 1 WHERE id = ?');
     $stmt->execute([$id]);
     $stmt = $pdo->prepare('UPDATE comments SET status = 1 WHERE post_id = ?');
     $stmt->execute([$id]);
     $pdo->commit();
+
+    $detail = $postTitle !== '' ? '恢复帖子: "' . mb_substr($postTitle, 0, 50) . '"' : '恢复帖子 ID: ' . $id;
+    admin_log_operation($pdo, 'post_restore', 'post', $id, $detail);
+
     flash_set('success', '帖子已从回收站恢复。');
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {

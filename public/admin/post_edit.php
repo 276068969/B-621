@@ -62,8 +62,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
+        $oldTitle = (string)$post['title'];
+        $oldContent = (string)$post['content'];
+        $changes = [];
+        if ($oldTitle !== $title) {
+            $changes[] = '标题: "' . mb_substr($oldTitle, 0, 50) . '" → "' . mb_substr($title, 0, 50) . '"';
+        }
+        if ($oldContent !== $content) {
+            $changes[] = '内容已更新';
+        }
+        $detail = !empty($changes) ? implode('; ', $changes) : '帖子内容无变化';
+
         $stmt = $pdo->prepare('UPDATE posts SET title = ?, content = ?, update_time = NOW() WHERE id = ?');
         $stmt->execute([$title, $content, $id]);
+        admin_log_operation($pdo, 'post_edit', 'post', $id, $detail);
         flash_set('success', '帖子已更新。');
         redirect('/admin/posts.php');
     }

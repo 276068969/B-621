@@ -49,9 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $admin = $config['admin'];
         if ($username === (string)$admin['username'] && $password === (string)$admin['password']) {
             admin_login();
+            admin_log_operation($pdo, 'admin_login', null, null, '管理员 ' . $username . ' 登录成功');
             flash_set('success', '后台登录成功。');
             redirect('/admin/index.php');
         }
+        admin_log_operation($pdo, 'admin_login_failed', null, null, '尝试使用账号 ' . $username . ' 登录失败');
         $accountLimiter->incrementByIdentifier('admin:' . $username);
         $errors['form'] = '账号或密码错误。';
     }
