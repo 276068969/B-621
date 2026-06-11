@@ -204,7 +204,7 @@ echo '    initialContent: "",';
 
 echo '    checkDirty: function() {';
 echo '      const titleEl = document.getElementById("title");';
-echo '      let content = ""';
+echo '      let content = "";';
 echo '      if (window.tinymce && tinymce.get("editor")) { content = tinymce.get("editor").getContent(); }';
 echo '      else if (document.getElementById("editor")) { content = document.getElementById("editor").value; }';
 echo '      const currentTitle = titleEl ? titleEl.value : "";';

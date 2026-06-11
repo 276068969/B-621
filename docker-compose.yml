@@ -30,6 +30,8 @@ services:
       - "8922:80"
     depends_on:
       - db
+    volumes:
+      - .:/var/www/html
 
 volumes:
   db_data:

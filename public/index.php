@@ -133,10 +133,12 @@ $scoreFields = '';
 if ($keyword !== '') {
     $scoreParts = [];
     if ($searchIn === 'all' || $searchIn === 'title') {
-        $scoreParts[] = 'CASE WHEN p.title LIKE :keyword_title THEN 1 ELSE 0 END * 10';
+        $scoreParts[] = 'CASE WHEN p.title LIKE :keyword_title_score THEN 1 ELSE 0 END * 10';
+        $params[':keyword_title_score'] = '%' . $keyword . '%';
     }
     if ($searchIn === 'all' || $searchIn === 'content') {
-        $scoreParts[] = 'CASE WHEN p.content LIKE :keyword_content THEN 1 ELSE 0 END * 3';
+        $scoreParts[] = 'CASE WHEN p.content LIKE :keyword_content_score THEN 1 ELSE 0 END * 3';
+        $params[':keyword_content_score'] = '%' . $keyword . '%';
     }
     if ($scoreParts) {
         $scoreFields = ', (' . implode(' + ', $scoreParts) . ') AS search_score';
