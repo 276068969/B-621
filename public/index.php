@@ -209,64 +209,7 @@ function build_query_string(array $overrides = []): string
     return '?' . http_build_query($params);
 }
 
-function highlight_keyword(string $text, string $keyword): string
-{
-    if ($keyword === '') {
-        return e($text);
-    }
-    $safeText = e($text);
-    $safeKeyword = preg_quote(e($keyword), '/');
-    $result = preg_replace('/(' . $safeKeyword . ')/iu', '<mark class="search-highlight">$1</mark>', $safeText);
-    return $result !== null ? $result : $safeText;
-}
 
-function get_context_excerpt(string $content, string $keyword, int $length = 120): string
-{
-    $plainText = strip_tags(sanitize_rich_html($content));
-    if ($keyword === '') {
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($plainText, 0, $length);
-        } else {
-            $excerpt = substr($plainText, 0, $length);
-        }
-        if (strlen($plainText) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
-        return $excerpt;
-    }
-
-    $keywordLower = mb_strtolower($keyword);
-    $textLower = mb_strtolower($plainText);
-    $pos = mb_strpos($textLower, $keywordLower);
-
-    if ($pos === false) {
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($plainText, 0, $length);
-        } else {
-            $excerpt = substr($plainText, 0, $length);
-        }
-        if (strlen($plainText) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
-        return $excerpt;
-    }
-
-    $keywordLen = mb_strlen($keyword);
-    $halfLength = (int)floor(($length - $keywordLen) / 2);
-    $start = max(0, $pos - $halfLength);
-    $end = min(mb_strlen($plainText), $pos + $keywordLen + $halfLength);
-
-    if (function_exists('mb_substr')) {
-        $excerpt = mb_substr($plainText, $start, $end - $start);
-    } else {
-        $excerpt = substr($plainText, $start, $end - $start);
-    }
-
-    $prefix = $start > 0 ? '...' : '';
-    $suffix = $end < mb_strlen($plainText) ? '...' : '';
-
-    return $prefix . $excerpt . $suffix;
-}
 
 render_header($config, ['title' => '帖子列表 - Lite Forum', 'active' => 'home']);
 
@@ -512,9 +455,9 @@ if (!$posts) {
     echo '</div>';
 } else {
     foreach ($posts as $post) {
-        $excerpt = get_context_excerpt((string)$post['content'], $keyword, 140);
-        $titleDisplay = highlight_keyword((string)$post['title'], $keyword);
-        $excerptDisplay = highlight_keyword($excerpt, $keyword);
+        $excerpt = get_post_excerpt((string)$post['content'], $keyword, 140);
+        $titleDisplay = highlight_keyword_in_text((string)$post['title'], $keyword);
+        $excerptDisplay = highlight_keyword_in_text($excerpt, $keyword);
 
         $titleMatch = false;
         $contentMatch = false;

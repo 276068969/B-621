@@ -117,15 +117,7 @@ if (!$history) {
     foreach ($history as $item) {
         $postId = (int)$item['id'];
 
-        $excerptSource = strip_tags(sanitize_rich_html((string)$item['content']));
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($excerptSource, 0, 120);
-        } else {
-            $excerpt = substr($excerptSource, 0, 120);
-        }
-        if (strlen($excerptSource) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
+        $excerpt = get_post_excerpt((string)$item['content'], '', 120);
 
         echo '<div class="card card-lite mb-3 history-card" data-post-id="' . $postId . '">';
         echo '<div class="card-body">';

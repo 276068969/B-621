@@ -171,15 +171,7 @@ if (!$filteredFavorites) {
         $status = (int)$fav['status'];
         $isExpired = $status === 0;
 
-        $excerptSource = strip_tags(sanitize_rich_html((string)$fav['content']));
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($excerptSource, 0, 120);
-        } else {
-            $excerpt = substr($excerptSource, 0, 120);
-        }
-        if (strlen($excerptSource) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
+        $excerpt = get_post_excerpt((string)$fav['content'], '', 120);
 
         $cardClass = 'card card-lite mb-3';
         if ($isExpired) {

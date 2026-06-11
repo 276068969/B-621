@@ -237,15 +237,7 @@ if ($tab === 'posts') {
         echo '</div>';
     } else {
         foreach ($posts as $post) {
-            $excerptSource = strip_tags(sanitize_rich_html((string)$post['content']));
-            if (function_exists('mb_substr')) {
-                $excerpt = mb_substr($excerptSource, 0, 100);
-            } else {
-                $excerpt = substr($excerptSource, 0, 100);
-            }
-            if (strlen($excerptSource) > strlen($excerpt)) {
-                $excerpt .= '...';
-            }
+            $excerpt = get_post_excerpt((string)$post['content'], '', 100);
 
             $postCanEdit = can_user_edit_post($config, $u, $post, (int)$post['comment_count']);
 

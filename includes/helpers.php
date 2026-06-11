@@ -75,13 +75,25 @@ function is_valid_mobile(?string $mobile): bool
     return (bool)preg_match('/^1\d{10}$/', $mobile);
 }
 
+function get_allowed_html_tags(): string
+{
+    return '<p><br><strong><b><em><i><u><ul><ol><li><blockquote><code><pre><a><h1><h2><h3><h4><h5><h6><hr><span>';
+}
+
+function get_allowed_html_tag_array(): array
+{
+    return ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'span'];
+}
+
 function sanitize_rich_html(string $html): string
 {
-    $allowed = '<p><br><strong><b><em><i><u><ul><ol><li><blockquote><code><pre><a><h1><h2><h3><h4><h5><h6><hr><span>';
+    $allowed = get_allowed_html_tags();
     $clean = strip_tags($html, $allowed);
 
     $clean = preg_replace('/\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
     $clean = preg_replace('/\sstyle\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/\sclass\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/\sid\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
 
     $clean = preg_replace_callback(
         '/<a\s+[^>]*href\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)[^>]*>/i',
@@ -97,6 +109,114 @@ function sanitize_rich_html(string $html): string
     );
 
     return $clean;
+}
+
+function normalize_rich_html(string $html): string
+{
+    $clean = trim($html);
+    if ($clean === '') {
+        return '';
+    }
+
+    $allowed = get_allowed_html_tags();
+    $clean = strip_tags($clean, $allowed);
+
+    $clean = preg_replace('/\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/\sstyle\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/\sclass\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/\sid\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean) ?? $clean;
+
+    $clean = preg_replace('/<p>\s*(&nbsp;|\s)*\s*<\/p>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<p>\s*<br\s*\/?>\s*<\/p>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<p>\s*<br>\s*<\/p>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<div>\s*(&nbsp;|\s)*\s*<\/div>/i', '', $clean) ?? $clean;
+
+    $clean = preg_replace('/<span>\s*(&nbsp;|\s)*\s*<\/span>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<strong>\s*(&nbsp;|\s)*\s*<\/strong>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<em>\s*(&nbsp;|\s)*\s*<\/em>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<b>\s*(&nbsp;|\s)*\s*<\/b>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<i>\s*(&nbsp;|\s)*\s*<\/i>/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/<u>\s*(&nbsp;|\s)*\s*<\/u>/i', '', $clean) ?? $clean;
+
+    $clean = preg_replace('/<br\s*\/?>\s*<br\s*\/?>/i', '<br>', $clean) ?? $clean;
+    $clean = preg_replace('/(<br>\s*){3,}/i', '<br><br>', $clean) ?? $clean;
+
+    $clean = preg_replace('/(<\/p>\s*){3,}/i', '</p><p>', $clean) ?? $clean;
+
+    $clean = preg_replace_callback(
+        '/<a\s+[^>]*href\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)[^>]*>/i',
+        function (array $m): string {
+            $raw = trim($m[1], " \t\n\r\0\x0B\"\'");
+            if (preg_match('/^\s*javascript:/i', $raw)) {
+                return '<a href="#">';
+            }
+            $safe = e($raw);
+            return '<a href="' . $safe . '" target="_blank" rel="noopener noreferrer">';
+        },
+        $clean
+    );
+
+    $clean = preg_replace('/<a>\s*<\/a>/i', '', $clean) ?? $clean;
+
+    $clean = trim($clean);
+    $clean = preg_replace('/^\s*(<br\s*\/?>|<br>)+/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/(<br\s*\/?>|<br>)+\s*$/i', '', $clean) ?? $clean;
+
+    return $clean;
+}
+
+function get_post_excerpt(string $content, string $keyword = '', int $length = 140): string
+{
+    $plainText = strip_tags(sanitize_rich_html($content));
+    $plainText = preg_replace('/\s+/', ' ', $plainText) ?? $plainText;
+    $plainText = trim($plainText);
+
+    if ($plainText === '') {
+        return '';
+    }
+
+    if ($keyword === '') {
+        $excerpt = mb_substr($plainText, 0, $length);
+        if (mb_strlen($plainText) > mb_strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLower = mb_strtolower($keyword);
+    $textLower = mb_strtolower($plainText);
+    $pos = mb_strpos($textLower, $keywordLower);
+
+    if ($pos === false) {
+        $excerpt = mb_substr($plainText, 0, $length);
+        if (mb_strlen($plainText) > mb_strlen($excerpt)) {
+            $excerpt .= '...';
+        }
+        return $excerpt;
+    }
+
+    $keywordLen = mb_strlen($keyword);
+    $halfLength = (int)floor(($length - $keywordLen) / 2);
+    $start = max(0, $pos - $halfLength);
+    $end = min(mb_strlen($plainText), $pos + $keywordLen + $halfLength);
+
+    $excerpt = mb_substr($plainText, $start, $end - $start);
+
+    $prefix = $start > 0 ? '...' : '';
+    $suffix = $end < mb_strlen($plainText) ? '...' : '';
+
+    return $prefix . $excerpt . $suffix;
+}
+
+function highlight_keyword_in_text(string $text, string $keyword): string
+{
+    if ($keyword === '') {
+        return e($text);
+    }
+    $safeText = e($text);
+    $safeKeyword = preg_quote(e($keyword), '/');
+    $result = preg_replace('/(' . $safeKeyword . ')/iu', '<mark class="search-highlight">$1</mark>', $safeText);
+    return $result !== null ? $result : $safeText;
 }
 
 function can_user_edit_post(array $config, ?array $user, array $post, int $commentCount = 0): bool

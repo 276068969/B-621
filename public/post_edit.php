@@ -104,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/post.php?id=' . $id);
         }
 
+        $content = normalize_rich_html($content);
         $stmt = $pdo->prepare('UPDATE posts SET board_id = ?, title = ?, content = ?, update_time = NOW() WHERE id = ?');
         $stmt->execute([$boardId, $title, $content, $id]);
         flash_set('success', '帖子已更新。');

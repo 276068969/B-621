@@ -72,6 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $oldTitle = (string)$post['title'];
         $oldContent = (string)$post['content'];
         $oldBoardId = (int)$post['board_id'];
+
+        $content = normalize_rich_html($content);
+
         $changes = [];
         if ($oldTitle !== $title) {
             $changes[] = '标题: "' . mb_substr($oldTitle, 0, 50) . '" → "' . mb_substr($title, 0, 50) . '"';

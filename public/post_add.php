@@ -73,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         $u = user();
+        $content = normalize_rich_html($content);
         $stmt = $pdo->prepare('INSERT INTO posts (board_id, user_id, title, content, status) VALUES (?, ?, ?, ?, 1)');
         $stmt->execute([$boardId, (int)$u['id'], $title, $content]);
         $postId = (int)$pdo->lastInsertId();

@@ -223,54 +223,6 @@ function admin_highlight_keyword(string $text, string $keyword): string
     return $result !== null ? $result : $safeText;
 }
 
-function admin_get_excerpt(string $content, string $keyword, int $length = 80): string
-{
-    $plainText = strip_tags($content);
-    if ($keyword === '') {
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($plainText, 0, $length);
-        } else {
-            $excerpt = substr($plainText, 0, $length);
-        }
-        if (strlen($plainText) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
-        return $excerpt;
-    }
-
-    $keywordLower = mb_strtolower($keyword);
-    $textLower = mb_strtolower($plainText);
-    $pos = mb_strpos($textLower, $keywordLower);
-
-    if ($pos === false) {
-        if (function_exists('mb_substr')) {
-            $excerpt = mb_substr($plainText, 0, $length);
-        } else {
-            $excerpt = substr($plainText, 0, $length);
-        }
-        if (strlen($plainText) > strlen($excerpt)) {
-            $excerpt .= '...';
-        }
-        return $excerpt;
-    }
-
-    $keywordLen = mb_strlen($keyword);
-    $halfLength = (int)floor(($length - $keywordLen) / 2);
-    $start = max(0, $pos - $halfLength);
-    $end = min(mb_strlen($plainText), $pos + $keywordLen + $halfLength);
-
-    if (function_exists('mb_substr')) {
-        $excerpt = mb_substr($plainText, $start, $end - $start);
-    } else {
-        $excerpt = substr($plainText, $start, $end - $start);
-    }
-
-    $prefix = $start > 0 ? '...' : '';
-    $suffix = $end < mb_strlen($plainText) ? '...' : '';
-
-    return $prefix . $excerpt . $suffix;
-}
-
 foreach ($tabs as $key => $tab) {
     $active = $status === $key ? ' active' : '';
     $url = build_admin_search_params($key, $keyword, $searchIn);
@@ -304,7 +256,7 @@ if (!$rows) {
             : '<span class="badge text-bg-secondary">已删除</span>';
 
         $titleDisplay = admin_highlight_keyword((string)$r['title'], $keyword);
-        $excerpt = admin_get_excerpt((string)$r['content'], $keyword, 100);
+        $excerpt = get_post_excerpt((string)$r['content'], $keyword, 100);
         $excerptDisplay = admin_highlight_keyword($excerpt, $keyword);
 
         $titleMatch = false;
@@ -312,7 +264,7 @@ if (!$rows) {
         if ($keyword !== '') {
             $keywordLower = mb_strtolower($keyword);
             $titleLower = mb_strtolower((string)$r['title']);
-            $contentLower = mb_strtolower(strip_tags((string)$r['content']));
+            $contentLower = mb_strtolower(strip_tags(sanitize_rich_html((string)$r['content'])));
             $titleMatch = mb_strpos($titleLower, $keywordLower) !== false;
             $contentMatch = mb_strpos($contentLower, $keywordLower) !== false;
         }
